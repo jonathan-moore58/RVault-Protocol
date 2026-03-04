@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#030712"/>
+      <stop offset="50%" stop-color="#050a0e"/>
+      <stop offset="100%" stop-color="#030712"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00ffaa"/>
+      <stop offset="100%" stop-color="#00e5ff"/>
+    </linearGradient>
+    <linearGradient id="logoBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00ffaa"/>
+      <stop offset="100%" stop-color="#00e5ff"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bgGrad)"/>
+  <!-- Ambient glow -->
+  <ellipse cx="200" cy="100" rx="400" ry="300" fill="#00ffaa" opacity="0.03"/>
+  <ellipse cx="1000" cy="530" rx="350" ry="250" fill="#bf5af2" opacity="0.03"/>
+  <!-- Top accent line -->
+  <rect x="0" y="0" width="1200" height="3" fill="url(#accent)"/>
+  <!-- Logo icon -->
+  <rect x="80" y="220" width="72" height="72" rx="16" fill="url(#logoBg)"/>
+  <path d="M100 268 L116 248 L126 260 L140 240" stroke="#030712" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M133 240 L140 240 L140 247" stroke="#030712" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Brand name -->
+  <text x="172" y="270" font-family="system-ui, -apple-system, sans-serif" font-size="48" font-weight="700" fill="white">RVault</text>
+  <!-- Tagline -->
+  <text x="82" y="350" font-family="system-ui, -apple-system, sans-serif" font-size="36" font-weight="600" fill="#e2e8f0">Revenue Sharing Vault</text>
+  <text x="82" y="400" font-family="system-ui, -apple-system, sans-serif" font-size="24" fill="#6b7280">Deposit tokens. Earn protocol fees. Bitcoin L1.</text>
+  <!-- Bottom bar -->
+  <rect x="82" y="520" width="120" height="4" rx="2" fill="url(#accent)"/>
+  <text x="82" y="560" font-family="system-ui, -apple-system, sans-serif" font-size="16" font-weight="600" fill="#4b5563" letter-spacing="3">POWERED BY OPNET</text>
+</svg>

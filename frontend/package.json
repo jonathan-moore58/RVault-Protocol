@@ -1,0 +1,43 @@
+{
+    "name": "revenue-vault-frontend",
+    "version": "1.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "tsc -b && vite build",
+        "preview": "vite preview",
+        "lint": "eslint src/"
+    },
+    "dependencies": {
+        "react": "latest",
+        "react-dom": "latest",
+        "react-router-dom": "latest",
+        "opnet": "1.8.1-rc.19",
+        "@btc-vision/transaction": "1.8.0-rc.10",
+        "@btc-vision/bitcoin": "7.0.0-rc.6",
+        "@btc-vision/walletconnect": "1.10.3",
+        "framer-motion": "latest"
+    },
+    "devDependencies": {
+        "vite": "latest",
+        "@vitejs/plugin-react": "latest",
+        "vite-plugin-node-polyfills": "latest",
+        "vite-plugin-eslint2": "latest",
+        "@tailwindcss/vite": "latest",
+        "tailwindcss": "latest",
+        "typescript": "latest",
+        "crypto-browserify": "latest",
+        "stream-browserify": "latest",
+        "@types/react": "latest",
+        "@types/react-dom": "latest",
+        "@types/node": "latest",
+        "eslint": "^9.39.2",
+        "@eslint/js": "^9.39.2",
+        "eslint-plugin-react-hooks": "latest",
+        "eslint-plugin-react-refresh": "latest",
+        "typescript-eslint": "latest"
+    },
+    "overrides": {
+        "@noble/hashes": "2.0.1"
+    }
+}

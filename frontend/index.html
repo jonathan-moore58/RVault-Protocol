@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RVault Protocol — Revenue Sharing on Bitcoin L1</title>
+    <meta name="description" content="Deposit tokens, earn proportional protocol fees. Revenue sharing vault powered by OPNet smart contracts on Bitcoin." />
+    <meta name="theme-color" content="#030712" />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- Open Graph / Social -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="RVault Protocol — Revenue Sharing on Bitcoin L1" />
+    <meta property="og:description" content="Deposit tokens, earn proportional protocol fees. Revenue sharing vault powered by OPNet smart contracts on Bitcoin." />
+    <meta property="og:image" content="/og-image.svg" />
+    <meta property="og:site_name" content="RVault Protocol" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="RVault Protocol — Revenue Sharing on Bitcoin L1" />
+    <meta name="twitter:description" content="Deposit tokens, earn proportional protocol fees. Revenue sharing vault powered by OPNet smart contracts on Bitcoin." />
+    <meta name="twitter:image" content="/og-image.svg" />
+
+    <!-- Font -->
+    <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&display=swap" rel="stylesheet" />
+
+    <!-- Preload critical styles -->
+    <style>
+        /* Inline critical CSS to prevent FOUC */
+        html { background: #030712; }
+        body { margin: 0; background: #030712; color: #e2e8f0; }
+
+        /* Loading splash */
+        #splash {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #030712;
+            transition: opacity 0.4s ease, visibility 0.4s ease;
+        }
+        #splash.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+        #splash .logo-mark {
+            width: 56px;
+            height: 56px;
+            border-radius: 14px;
+            background: linear-gradient(135deg, #00ffaa, #00e5ff);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: splash-pulse 2s ease-in-out infinite;
+        }
+        #splash .brand {
+            margin-top: 20px;
+            font-family: 'Satoshi', system-ui, sans-serif;
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: white;
+        }
+        #splash .brand span {
+            background: linear-gradient(135deg, #00ffaa, #00e5ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        #splash .sub {
+            margin-top: 8px;
+            font-family: 'Satoshi', system-ui, sans-serif;
+            font-size: 12px;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: #4b5563;
+        }
+        @keyframes splash-pulse {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0,255,170,0.3); }
+            50% { transform: scale(1.05); box-shadow: 0 0 40px rgba(0,255,170,0.15); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Splash screen shown while JS loads -->
+    <div id="splash">
+        <div class="logo-mark">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#030712" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+            </svg>
+        </div>
+        <div class="brand">R<span>Vault</span> Protocol</div>
+        <div class="sub">Revenue Sharing on Bitcoin</div>
+    </div>
+
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+        // Hide splash once React mounts
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                const s = document.getElementById('splash');
+                if (s) s.classList.add('hidden');
+                setTimeout(() => { if (s) s.remove(); }, 500);
+            }, 800);
+        });
+    </script>
+</body>
+</html>
