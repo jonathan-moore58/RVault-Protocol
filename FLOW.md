@@ -1,7 +1,7 @@
-# RVault Protocol -- Comprehensive Flow Document
+# RVault Protocol — Comprehensive Flow Document
 
-> **Revenue-sharing vault on Bitcoin L1, powered by OPNet.**
-> Deposit OP20 tokens, earn proportional protocol fees, claim or auto-compound revenue.
+> **Multi-vault revenue-sharing protocol on Bitcoin L1, powered by OPNet.**
+> Three vaults (MOTO, PILL, RVT) · Trustless FeeRouter · Multi-token rewards for RVT stakers
 
 ---
 
@@ -9,11 +9,13 @@
 
 1. [Architecture Overview](#1-architecture-overview)
 2. [Smart Contract Design](#2-smart-contract-design)
-3. [User Flows (with ASCII Diagrams)](#3-user-flows-with-ascii-diagrams)
-4. [Revenue Distribution Algorithm](#4-revenue-distribution-algorithm-detailed)
-5. [Contract Method Reference](#5-contract-method-reference)
-6. [Frontend Component Map](#6-frontend-component-map)
-7. [Deployment Flow](#7-deployment-flow)
+3. [FeeRouter Contract](#3-feerouter-contract)
+4. [User Flows (with ASCII Diagrams)](#4-user-flows-with-ascii-diagrams)
+5. [Revenue Distribution Algorithm](#5-revenue-distribution-algorithm-detailed)
+6. [Fee Flow: End-to-End](#6-fee-flow-end-to-end)
+7. [Contract Method Reference](#7-contract-method-reference)
+8. [Frontend Component Map](#8-frontend-component-map)
+9. [Deployment Flow](#9-deployment-flow)
 
 ---
 
@@ -22,87 +24,102 @@
 ### 1.1 System Topology
 
 ```
-+------------------------------------------------------------------+
-|                         BITCOIN L1                                |
-|  +------------------------------------------------------------+  |
-|  |                    OPNet Runtime                            |  |
-|  |  +------------------------+   +-------------------------+  |  |
-|  |  |    RevenueVault.wasm   |   |   OP20 Token (MOTO)     |  |  |
-|  |  |  (AssemblyScript-based)|   |   (Standard OP20)       |  |  |
-|  |  |                        |<->|                         |  |  |
-|  |  |  - deposit()           |   |  - transfer()           |  |  |
-|  |  |  - withdraw()          |   |  - transferFrom()       |  |  |
-|  |  |  - claimRevenue()      |   |  - increaseAllowance()  |  |  |
-|  |  |  - collectFees()       |   |  - balanceOf()          |  |  |
-|  |  |  - autoCompound()      |   |                         |  |  |
-|  |  |  - emergencyWithdraw() |   +-------------------------+  |  |
-|  |  +------------------------+                                |  |
-|  +------------------------------------------------------------+  |
-+------------------------------------------------------------------+
++------------------------------------------------------------------------+
+|                            BITCOIN L1                                   |
+|  +-------------------------------------------------------------------+ |
+|  |                         OPNet Runtime                              | |
+|  |                                                                    | |
+|  |  +------------------+  +------------------+  +-------------------+ | |
+|  |  | MOTO Vault.wasm  |  | PILL Vault.wasm  |  | RVT Vault.wasm    | | |
+|  |  | (RevenueVault)   |  | (RevenueVault)   |  | (RevenueVault)    | | |
+|  |  |                  |  |                  |  |                    | | |
+|  |  | deposit()        |  | deposit()        |  | deposit()         | | |
+|  |  | withdraw()       |  | withdraw()       |  | withdraw()        | | |
+|  |  | claimRevenue()   |  | claimRevenue()   |  | claimRevenue()    | | |
+|  |  | collectFees()    |  | collectFees()    |  | claimAllRewards() | | |
+|  |  | autoCompound()   |  | autoCompound()   |  | distributeReward()| | |
+|  |  | emergencyExit()  |  | emergencyExit()  |  | emergencyExit()   | | |
+|  |  +-------+----------+  +-------+----------+  +--------+----------+ | |
+|  |          |                      |                       ^          | |
+|  |          | 5% fee               | 5% fee                |          | |
+|  |          v                      v                       |          | |
+|  |  +--------------------------------------------------+   |          | |
+|  |  |              FeeRouter.wasm (1 instance)          |   |          | |
+|  |  |                                                   |   |          | |
+|  |  |  distribute(token) — permissionless               |   |          | |
+|  |  |  ┌──────────────────────────────────────────────┐ |   |          | |
+|  |  |  │ 90% ──► approve + distributeReward() ────────┼─┼───┘          | |
+|  |  |  │ 10% ──► transfer() to team wallet            │ |              | |
+|  |  |  └──────────────────────────────────────────────┘ |              | |
+|  |  +--------------------------------------------------+              | |
+|  |                                                                    | |
+|  |  +------------------+  +------------------+  +-------------------+ | |
+|  |  | MOTO Token OP20  |  | PILL Token OP20  |  | RVT Token OP20    | | |
+|  |  | (external token) |  | (external token) |  | (protocol token)  | | |
+|  |  +------------------+  +------------------+  +-------------------+ | |
+|  +-------------------------------------------------------------------+ |
++------------------------------------------------------------------------+
          ^                    ^
          | simulate           | sendTransaction
          | (read-only)        | (signer:null, wallet signs)
          |                    |
-+------------------------------------------------------------------+
-|                    OPNet SDK (opnet npm)                          |
-|  getContract<T>(address, ABI, provider, network)                 |
-|  - Generates typed proxy from BitcoinInterfaceAbi                |
-|  - simulate: call method -> returns CallResult w/ properties     |
-|  - sendTransaction: sign via WalletConnect -> broadcast to node  |
-+------------------------------------------------------------------+
++------------------------------------------------------------------------+
+|                     OPNet SDK (opnet npm)                                |
+|  getContract<T>(address, ABI, provider, network)                        |
+|  - Generates typed proxy from BitcoinInterfaceAbi                       |
+|  - simulate: call method -> returns CallResult w/ properties            |
+|  - sendTransaction: sign via WalletConnect -> broadcast to node         |
++------------------------------------------------------------------------+
          ^
          |
-+------------------------------------------------------------------+
-|                     FRONTEND APPLICATION                          |
-|  React 19 + Vite + TypeScript + Tailwind CSS + Framer Motion     |
-|                                                                   |
-|  Pages:          Hooks:              Components:                  |
-|  - Dashboard     - useVaultContract   - DepositForm              |
-|  - Deposit       - useVaultData       - WithdrawForm             |
-|  - Withdraw      - useTransaction     - ClaimCard                |
-|  - Admin                              - VaultStats               |
-|                                        - VaultGauge              |
-|                                                                   |
-|  Wallet: @btc-vision/walletconnect (OP_WALLET, UniSat)          |
-+------------------------------------------------------------------+
++------------------------------------------------------------------------+
+|                      FRONTEND APPLICATION                               |
+|  React 19 + Vite 7 + TypeScript 5 + Tailwind CSS 4 + Framer Motion    |
+|                                                                         |
+|  Pages:            Hooks:                Components:                    |
+|  - Vaults          - useVaultContract     - DepositForm                 |
+|  - Dashboard       - useVaultData         - WithdrawForm                |
+|  - Deposit         - useTransaction       - ClaimCard                   |
+|  - Withdraw        - useAllVaultsData     - VaultStats                  |
+|  - Claim                                  - VaultGauge                  |
+|  - Admin           Context:               - TransactionStatus           |
+|  - Tokenomics      - VaultContext          - Skeleton                   |
+|                                                                         |
+|  Wallet: @btc-vision/walletconnect (OP_WALLET, UniSat)                 |
++------------------------------------------------------------------------+
          ^
          |
-+------------------------------------------------------------------+
-|                          USER                                     |
-|  Browser with OP_WALLET or UniSat Bitcoin wallet extension        |
-+------------------------------------------------------------------+
++------------------------------------------------------------------------+
+|                           USER                                          |
+|  Browser with OP_WALLET or UniSat Bitcoin wallet extension              |
++------------------------------------------------------------------------+
 ```
 
-### 1.2 Contract Architecture
+### 1.2 Multi-Vault Architecture
 
-| Layer           | Technology                                         |
-| --------------- | -------------------------------------------------- |
-| Blockchain      | Bitcoin L1                                         |
-| Smart Contract  | OPNet Runtime (btc-runtime)                        |
-| Language        | AssemblyScript (compiles to WASM)                  |
-| Token Standard  | OP20 (OPNet's ERC-20 equivalent)                   |
-| Base Class      | `OP_NET` from `@btc-vision/btc-runtime/runtime`    |
-| Math Library    | `SafeMath` (overflow-safe u256 arithmetic)          |
-| Big Integers    | `u256` from `@btc-vision/as-bignum/assembly`       |
+The protocol deploys the **same RevenueVault.wasm** three times, each with isolated storage:
 
-The contract is written in AssemblyScript, compiled to WASM, and deployed to Bitcoin L1
-via the OPNet runtime. It extends `OP_NET`, which provides the standard contract lifecycle
-(`onDeployment`, `callMethod`) and blockchain primitives (`Blockchain.tx.sender`,
-`Blockchain.block.numberU256`, `Blockchain.call`).
+| Vault | Deposit Token | Purpose |
+|-------|--------------|---------|
+| **MOTO Vault** | MOTO (OP20) | Earn fees from MOTO deposits |
+| **PILL Vault** | PILL (OP20) | Earn fees from PILL deposits |
+| **RVT Vault** | RVT (OP20) | Earn fees from RVT deposits + receive MOTO/PILL rewards from FeeRouter |
 
-### 1.3 Frontend Architecture
+The RVT Vault is special: it also accepts **external reward tokens** (MOTO, PILL) via `distributeReward()`, enabling RVT stakers to earn from all three vaults.
 
-| Layer             | Technology                                        |
-| ----------------- | ------------------------------------------------- |
-| Framework         | React 19 with TypeScript                          |
-| Bundler           | Vite                                              |
-| Styling           | Tailwind CSS + custom CSS variables               |
-| Animations        | Framer Motion                                     |
-| Wallet Connection | `@btc-vision/walletconnect` (WalletConnect v2)    |
-| Contract SDK      | `opnet` (getContract, OP_20_ABI, typed proxies)   |
-| Routing           | React Router with animated page transitions        |
+### 1.3 Contract Architecture
 
-### 1.4 How Contract Calls Work (Simulate -> Send Pattern)
+| Layer | Technology |
+|-------|-----------|
+| Blockchain | Bitcoin L1 |
+| Smart Contract | OPNet Runtime (btc-runtime) |
+| Language | AssemblyScript (compiles to WASM) |
+| Token Standard | OP20 (OPNet's ERC-20 equivalent) |
+| Base Class | `OP_NET` from `@btc-vision/btc-runtime/runtime` |
+| Math Library | `SafeMath` (overflow-safe u256 arithmetic) |
+| Big Integers | `u256` from `@btc-vision/as-bignum/assembly` |
+
+### 1.4 How Contract Calls Work (Simulate → Send Pattern)
 
 Every contract interaction follows the same two-phase pattern:
 
@@ -129,29 +146,21 @@ Phase 2: SEND TRANSACTION (requires wallet signature)
                    network: activeNetwork
 ```
 
-The `useTransaction` hook encapsulates this entire lifecycle:
+The `useTransaction` hook encapsulates this lifecycle:
 
 ```
-idle --> simulating --> pending --> success
+idle --> simulating --> pending --> confirming --> success
                    \              \
                     +-> error      +-> error
 ```
-
-1. `idle` -- button enabled, waiting for user click
-2. `simulating` -- `simulateFn()` called, checks if tx would revert
-3. If `simulation.revert` exists, transition to `error`
-4. `pending` -- `simulation.sendTransaction(...)` called, wallet popup shown
-5. `success` -- transaction broadcast, `receipt.transactionId` captured
-6. `error` -- any exception caught, error message displayed
 
 ---
 
 ## 2. Smart Contract Design
 
-### 2.1 Storage Layout
+### 2.1 RevenueVault Storage Layout
 
-The contract uses OPNet's pointer-based storage. Each `Blockchain.nextPointer` returns
-a monotonically increasing `u16` that addresses a unique storage slot.
+Each vault deployment has its own isolated storage. Pointer addresses are sequential:
 
 ```
 Pointer   Type              Variable                    Description
@@ -172,22 +181,22 @@ Pointer   Type              Variable                    Description
 13        StoredU256        protocolFeeBps              Fee in basis points (1 bp = 0.01%)
 14        StoredAddress     protocolFeeRecipient        Address receiving protocol cut
 15        StoredU256        totalProtocolFees           Lifetime protocol fees collected
-16        StoredU256        cooldownBlocks              Blocks to wait after deposit before withdraw
+16        StoredU256        cooldownBlocks              Blocks to wait after deposit
 17        AddressMemoryMap  userLastDepositBlock        user -> block number of last deposit
+18        StoredU256        rewardTokenCount            Number of external reward tokens (0-2)
+19        StoredAddress     rewardToken0                First external reward token address
+20        StoredAddress     rewardToken1                Second external reward token address
+21        StoredU256        rewardAccumulator0          Per-share accumulator for token0
+22        StoredU256        rewardAccumulator1          Per-share accumulator for token1
+23        StoredU256        totalRewardDistributed0     Total token0 distributed
+24        StoredU256        totalRewardDistributed1     Total token1 distributed
+25        AddressMemoryMap  userRewardDebt0             user -> token0 accumulator snapshot
+26        AddressMemoryMap  userRewardDebt1             user -> token1 accumulator snapshot
 ```
-
-**Storage types:**
-- `StoredU256(pointer, EMPTY_POINTER)` -- single u256 value in contract storage
-- `StoredAddress(pointer)` -- single Address (Bitcoin taproot address) in storage
-- `StoredBoolean(pointer, default)` -- single boolean flag
-- `AddressMemoryMap(pointer)` -- mapping from Address -> u256 (key-value store)
 
 ### 2.2 Revenue Algorithm (Synthetix-Style Accumulator)
 
-The vault uses a **Synthetix RewardsDistributor-style** global accumulator to efficiently
-track revenue entitlements for all depositors without iterating over users.
-
-**Core Concept:**
+The vault uses a **global per-share accumulator** for O(1) revenue distribution:
 
 ```
 revenuePerShareAccumulator += (newRevenue * PRECISION) / totalShares
@@ -199,20 +208,31 @@ Each user's pending revenue is:
 pendingRevenue = (userShares * (accumulator - userDebt)) / PRECISION
 ```
 
-Where:
-- `PRECISION = 1e18` (prevents rounding to zero for small amounts)
-- `userDebt` is set to the current accumulator whenever a user deposits, withdraws, or claims
+Where `PRECISION = 1e18`. The same math is used for external reward token accumulators.
 
-**Why this works:**
-- When fees arrive, the per-share increase is recorded globally once
-- Each user's entitlement is computed on-demand from their share count and the
-  difference between current accumulator and their personal snapshot (debt)
-- O(1) per operation regardless of number of depositors
+### 2.3 External Reward System (Multi-Token)
 
-### 2.3 Security Features
+The RVT Vault supports up to 2 external reward tokens (MOTO, PILL). Each has its own accumulator:
 
-#### 2.3.1 Reentrancy Guard
+```
+distributeReward(token, amount):
+  1. Identify which reward slot (0 or 1) matches the token
+  2. transferFrom(sender, vault, amount)
+  3. rewardAccumulator[slot] += (amount * PRECISION) / totalShares
+  4. totalRewardDistributed[slot] += amount
 
+claimAllRewards():
+  For each reward slot (0, 1):
+    pending = (userShares * (rewardAccumulator[slot] - userRewardDebt[slot])) / PRECISION
+    if pending > 0: transfer pending to user
+    userRewardDebt[slot] = rewardAccumulator[slot]
+```
+
+External rewards are also auto-settled on `withdraw()` and `emergencyWithdraw()`.
+
+### 2.4 Security Features
+
+#### Reentrancy Guard
 ```
 _nonReentrant():
     if locked == true -> Revert("Reentrancy")
@@ -223,32 +243,21 @@ _unlock():
 ```
 
 Every state-changing method calls `_nonReentrant()` at entry and `_unlock()` at exit.
-This prevents a malicious token contract from re-entering the vault during a
-`transfer` or `transferFrom` callback.
 
-#### 2.3.2 Checks-Effects-Interactions (CEI) Pattern
+#### Checks-Effects-Interactions (CEI) Pattern
 
 All write methods follow CEI strictly:
-
 ```
-1. CHECKS:    Validate inputs, check balances, verify permissions
-2. EFFECTS:   Update storage (shares, deposits, debt, accumulators)
-3. INTERACTIONS: External calls (transferFrom, transfer to user)
+1. CHECKS:        Validate inputs, check balances, verify permissions
+2. EFFECTS:       Update storage (shares, deposits, debt, accumulators)
+3. INTERACTIONS:  External calls (transferFrom, transfer to user)
 ```
 
-Example in `_deposit()`:
-- Check: amount > 0, minimum deposit, not paused
-- Effect: update userShares, totalShares, totalDeposited, userRevenueDebt, userLastDepositBlock
-- Interaction: `_transferFromSender()` (external call to OP20 token)
+#### SafeMath (Overflow Protection)
 
-#### 2.3.3 SafeMath (Overflow Protection)
+All arithmetic uses `SafeMath.add()`, `SafeMath.sub()`, `SafeMath.mul()`, `SafeMath.div()`. These revert on overflow/underflow/division-by-zero for u256 operations.
 
-All arithmetic uses `SafeMath.add()`, `SafeMath.sub()`, `SafeMath.mul()`, `SafeMath.div()`
-from the btc-runtime. These revert on overflow/underflow/division-by-zero for u256
-operations, preventing silent wraparound bugs.
-
-#### 2.3.4 Withdrawal Cooldown
-
+#### Withdrawal Cooldown
 ```
 _checkCooldown(user):
     cooldown = cooldownBlocks.value         // configurable, default 6 blocks (~1hr)
@@ -259,86 +268,164 @@ _checkCooldown(user):
     if currentBlock < unlockBlock -> Revert("Withdrawal cooldown active")
 ```
 
-Prevents deposit-then-immediately-withdraw attacks and front-running fee distributions.
+#### Pause Mechanism
 
-#### 2.3.5 Pause Mechanism
-
-- `pause()` / `unpause()` -- owner-only toggle
+- `pause()` / `unpause()` — owner-only toggle
 - `_whenNotPaused()` guard on: deposit, withdraw, claimRevenue, autoCompound
-- `emergencyWithdraw()` works even when paused (no `_whenNotPaused` check)
-- `collectFees()` works even when paused (fees can still accumulate)
+- `emergencyWithdraw()` works even when paused
+- `collectFees()` works even when paused
 
-#### 2.3.6 Access Control
+#### Access Control
 
 - `_onlyOwner()`: checks `Blockchain.tx.sender === owner` for admin methods
 - Owner is set to `Blockchain.tx.origin` during deployment
 - No ownership transfer function (immutable owner)
 
-### 2.4 Event System
+### 2.5 Event System
 
-The contract emits 12 event types for on-chain indexing and frontend feedback:
+The RevenueVault emits these event types:
 
-| Event                     | Fields                             | Emitted By                |
-| ------------------------- | ---------------------------------- | ------------------------- |
-| `Deposit`                 | user, amount, shares               | `_deposit()`              |
-| `Withdraw`                | user, shares, amountOut            | `_withdraw()`             |
-| `ClaimRevenue`            | user, amount                       | `_claimRevenue()`, `_withdraw()`, `_settleRevenue()` |
-| `CollectFees`             | sender, amount, protocolCut        | `_collectFees()`          |
-| `AutoCompound`            | user, revenue, newShares           | `_autoCompound()`         |
-| `EmergencyWithdraw`       | user, shares, amountOut            | `_emergencyWithdraw()`    |
-| `Paused`                  | account                            | `_pause()`                |
-| `Unpaused`                | account                            | `_unpause()`              |
-| `MinimumDepositChanged`   | newAmount                          | `_setMinimumDeposit()`    |
-| `ProtocolFeeChanged`      | newBps                             | `_setProtocolFee()`       |
-| `FeeRecipientChanged`     | newRecipient                       | `_setProtocolFeeRecipient()` |
-| `CooldownChanged`         | newBlocks                          | `_setCooldownBlocks()`    |
+| Event | Fields | Emitted By |
+|-------|--------|-----------|
+| `Deposit` | user, amount, shares | `_deposit()` |
+| `Withdraw` | user, shares, amountOut | `_withdraw()` |
+| `ClaimRevenue` | user, amount | `_claimRevenue()`, `_withdraw()`, `_settleRevenue()` |
+| `CollectFees` | sender, amount, protocolCut | `_collectFees()` |
+| `AutoCompound` | user, revenue, newShares | `_autoCompound()` |
+| `EmergencyWithdraw` | user, shares, amountOut | `_emergencyWithdraw()` |
+| `Paused` | account | `_pause()` |
+| `Unpaused` | account | `_unpause()` |
+| `MinimumDepositChanged` | newAmount | `_setMinimumDeposit()` |
+| `ProtocolFeeChanged` | newBps | `_setProtocolFee()` |
+| `FeeRecipientChanged` | newRecipient | `_setProtocolFeeRecipient()` |
+| `CooldownChanged` | newBlocks | `_setCooldownBlocks()` |
 
 ---
 
-## 3. User Flows (with ASCII Diagrams)
+## 3. FeeRouter Contract
 
-### 3.1 Deposit Flow
+### 3.1 Purpose
 
-The user deposits OP20 tokens into the vault and receives proportional shares.
-This is a **two-transaction** process: approve then deposit.
+The FeeRouter solves the trust problem: instead of protocol fees going to a team wallet (which looks like a rug), fees go to a **contract** that splits them trustlessly on-chain.
+
+```
+Without FeeRouter:
+  Vault fees ──► Team's personal wallet ──► "trust us we'll distribute"
+
+With FeeRouter:
+  Vault fees ──► FeeRouter contract ──► 90% to RVT stakers (automatic)
+                                    ──► 10% to team wallet (automatic)
+```
+
+### 3.2 Storage Layout
+
+```
+Pointer   Type           Variable           Description
+-----------------------------------------------------------------
+0         StoredAddress  owner              Contract deployer / admin
+1         StoredAddress  rvtVault           RVT Vault contract address
+2         StoredAddress  teamWallet         Team wallet address
+3         StoredU256     teamBps            Team cut in basis points (default 1000 = 10%)
+4         StoredBoolean  locked             Reentrancy guard mutex
+5         StoredU256     totalDistributed   Lifetime tokens distributed
+```
+
+### 3.3 Core Method: distribute(token)
+
+**Permissionless** — anyone can call this.
+
+```
+distribute(tokenAddress):
+  1. _nonReentrant()
+  2. require rvtVault is set
+  3. require teamWallet is set
+  4. balance = token.balanceOf(FeeRouter)        // how much FeeRouter holds
+  5. require balance > 0
+  6. teamAmount = balance * teamBps / 10000      // 10% default
+  7. vaultAmount = balance - teamAmount           // 90% default
+  8. token.transfer(teamWallet, teamAmount)       // send team cut
+  9. token.approve(rvtVault, vaultAmount)         // approve RVT vault
+  10. rvtVault.distributeReward(token, vaultAmount) // push to RVT vault
+  11. totalDistributed += balance
+  12. _unlock()
+```
+
+### 3.4 Cross-Contract Call Chain
+
+When `distribute(MOTO)` is called:
+
+```
+Caller ──► FeeRouter.distribute(MOTO_address)
+               |
+               ├── FeeRouter calls MOTO.balanceOf(FeeRouter) ──► returns 50 MOTO
+               |
+               ├── FeeRouter calls MOTO.transfer(teamWallet, 5 MOTO)
+               |
+               ├── FeeRouter calls MOTO.approve(rvtVault, 45 MOTO)
+               |
+               └── FeeRouter calls RVT_Vault.distributeReward(MOTO, 45 MOTO)
+                       |
+                       └── RVT Vault calls MOTO.transferFrom(FeeRouter, rvtVault, 45 MOTO)
+                           RVT Vault updates rewardAccumulator0
+                           Now all RVT stakers have pending MOTO rewards
+```
+
+**Key**: `Blockchain.tx.sender` in the RVT vault's `distributeReward` is the FeeRouter contract (not the original caller). The FeeRouter approves the vault beforehand, so `transferFrom` succeeds.
+
+### 3.5 Admin Methods
+
+| Method | Description |
+|--------|------------|
+| `setRvtVault(addr)` | Set RVT vault address (one-time setup) |
+| `setTeamWallet(addr)` | Set team wallet address |
+| `setTeamBps(bps)` | Set team cut 0-3000 bps (max 30%, default 10%) |
+
+### 3.6 Why Permissionless Distribution
+
+`distribute()` has no access control because:
+- Money always goes to the same places (team + RVT vault) — hardcoded in contract
+- The caller gets nothing — they just pay gas
+- No one can redirect funds — the split is on-chain
+- Prevents hostage situation — team can't withhold fees from stakers
+- Anyone (user, bot, keeper) can trigger payouts at any time
+
+---
+
+## 4. User Flows (with ASCII Diagrams)
+
+### 4.1 Deposit Flow
+
+The user deposits OP20 tokens into a vault and receives proportional shares. This is a **two-transaction** process: always approve then deposit (MotoSwap pattern).
 
 ```
  User            DepositForm        useTransaction      OPNet SDK         OP20 Token      RevenueVault
   |                   |                   |                  |                  |                |
   | Enter amount      |                   |                  |                  |                |
   |------------------>|                   |                  |                  |                |
-  |                   |                   |                  |                  |                |
   |                   | previewDeposit()  |                  |                  |                |
   |                   |------------------------------------->(simulate)------->|                |
   |                   |<-------------------------------------| shares preview  |                |
   |                   |                   |                  |                  |                |
-  | Click "Approve"   |                   |                  |                  |                |
+  | Click "Deposit"   |                   |                  |                  |                |
   |------------------>|                   |                  |                  |                |
+  |                   |                   |                  |                  |                |
+  |                   | STEP 1: APPROVE (always, MotoSwap pattern)             |                |
   |                   | execute(          |                  |                  |                |
   |                   |  increaseAllow.)  |                  |                  |                |
   |                   |------------------>|                  |                  |                |
   |                   |                   | simulateFn()     |                  |                |
-  |                   |                   |----------------->|                  |                |
-  |                   |                   |                  | increaseAllowance(vault, amount) |
+  |                   |                   |----------------->| increaseAllowance(vault, amount) |
   |                   |                   |                  |----------------->|                |
   |                   |                   |                  |<-----------------| CallResult     |
-  |                   |                   |<-----------------| (no revert)      |                |
-  |                   |                   |                  |                  |                |
   |                   |                   | sendTransaction  |                  |                |
-  |                   |                   |  (signer: null)  |                  |                |
-  |                   |                   |----------------->| Wallet signs     |                |
-  | [Wallet Popup] <--|-------------------|------------------|  & broadcasts    |                |
-  | [User approves]   |                   |                  |                  |                |
+  | [Wallet Popup] <--|-------------------|----------------->| sign & broadcast |                |
   |                   |                   |<-----------------| txId             |                |
-  |                   |<------------------| step='deposit'   |                  |                |
   |                   |                   |                  |                  |                |
-  | Click "Deposit"   |                   |                  |                  |                |
-  |------------------>|                   |                  |                  |                |
+  |                   | STEP 2: DEPOSIT (ignoreRevert — approve is in mempool) |                |
   |                   | execute(deposit)  |                  |                  |                |
   |                   |------------------>|                  |                  |                |
   |                   |                   | simulateFn()     |                  |                |
-  |                   |                   |----------------->|                  |                |
-  |                   |                   |                  | vault.deposit(amount)             |
+  |                   |                   |----------------->| vault.deposit(amount)             |
   |                   |                   |                  |---------------------------------->|
   |                   |                   |                  |                  |                |
   |                   |                   |                  |   CONTRACT LOGIC:                |
@@ -348,24 +435,21 @@ This is a **two-transaction** process: approve then deposit.
   |                   |                   |                  |   4. check minimumDeposit        |
   |                   |                   |                  |   5. _settleRevenue(sender)      |
   |                   |                   |                  |   6. calc shares to mint         |
-  |                   |                   |                  |   7. update userShares           |
-  |                   |                   |                  |   8. update totalShares          |
-  |                   |                   |                  |   9. set userRevenueDebt         |
-  |                   |                   |                  |   10. set userLastDepositBlock   |
-  |                   |                   |                  |   11. transferFrom(sender,vault) |
-  |                   |                   |                  |   12. emit Deposit event         |
-  |                   |                   |                  |   13. _unlock()                  |
+  |                   |                   |                  |   7. update storage              |
+  |                   |                   |                  |   8. transferFrom(sender, vault) |
+  |                   |                   |                  |   9. emit Deposit event          |
+  |                   |                   |                  |   10. _unlock()                  |
   |                   |                   |                  |                  |                |
-  |                   |                   |                  |<---------------------------------|
-  |                   |                   |<-----------------| CallResult       |                |
-  |                   |                   |                  |                  |                |
-  |                   |                   | sendTransaction  |                  |                |
+  |                   |                   | sendTransaction(ignoreRevert:true) |                |
   | [Wallet Popup] <--|-------------------|----------------->| sign & broadcast |                |
-  |                   |                   |<-----------------| txId             |                |
+  |                   |                   |                  |                  |                |
+  |                   |                   | pollConfirmation (wait for block)  |                |
+  |                   |                   |<-----------------| confirmed        |                |
   |                   |<------------------| success          |                  |                |
   |<------------------| "Deposit success" |                  |                  |                |
-  |                   | refetch() after 2s|                  |                  |                |
 ```
+
+**Why always approve?** Bitcoin blocks take ~10 minutes. The RPC can return stale allowance data — checking `allowance()` before deciding to approve is unreliable and causes intermittent failures. The MotoSwap pattern (always approve + ignoreRevert on deposit) is the only reliable approach.
 
 **Share calculation:**
 ```
@@ -375,10 +459,9 @@ else:
     sharesToMint = (amount * totalShares) / totalDeposited  // proportional
 ```
 
-### 3.2 Withdraw Flow
+### 4.2 Withdraw Flow
 
-The user burns shares to retrieve deposited tokens. Any pending revenue is
-**automatically claimed** before the withdrawal.
+Burns shares to retrieve tokens. Pending revenue and external rewards are **automatically claimed**.
 
 ```
  User            WithdrawForm       useTransaction      OPNet SDK        RevenueVault
@@ -393,29 +476,21 @@ The user burns shares to retrieve deposited tokens. Any pending revenue is
   |------------------>|                   |                  |                |
   |                   | execute(withdraw) |                  |                |
   |                   |------------------>|                  |                |
-  |                   |                   | simulateFn()     |                |
-  |                   |                   |----------------->|                |
-  |                   |                   |                  | vault.withdraw(shares)
+  |                   |                   |----------------->| vault.withdraw(shares)
   |                   |                   |                  |--------------->|
   |                   |                   |                  |                |
   |                   |                   |                  |  CONTRACT LOGIC:
   |                   |                   |                  |  1. _whenNotPaused()
   |                   |                   |                  |  2. _nonReentrant()
-  |                   |                   |                  |  3. validate shares > 0
-  |                   |                   |                  |  4. check shares <= userShares
-  |                   |                   |                  |  5. _checkCooldown(sender)
-  |                   |                   |                  |  6. AUTO-CLAIM pending revenue:
-  |                   |                   |                  |     a. calc pendingRevenue
-  |                   |                   |                  |     b. update debt & claimed
-  |                   |                   |                  |     c. transfer revenue to user
-  |                   |                   |                  |     d. emit ClaimRevenue event
-  |                   |                   |                  |  7. amountOut = (shares * totalDep) / totalShares
-  |                   |                   |                  |  8. burn shares (sub from user & total)
-  |                   |                   |                  |  9. sub amountOut from totalDeposited
-  |                   |                   |                  |  10. reset debt for remaining shares
-  |                   |                   |                  |  11. transfer amountOut to user
-  |                   |                   |                  |  12. emit Withdraw event
-  |                   |                   |                  |  13. _unlock()
+  |                   |                   |                  |  3. validate shares
+  |                   |                   |                  |  4. _checkCooldown(sender)
+  |                   |                   |                  |  5. AUTO-CLAIM vault revenue
+  |                   |                   |                  |  6. AUTO-CLAIM external rewards
+  |                   |                   |                  |  7. calc amountOut
+  |                   |                   |                  |  8. burn shares, update storage
+  |                   |                   |                  |  9. transfer amountOut to user
+  |                   |                   |                  |  10. emit Withdraw event
+  |                   |                   |                  |  11. _unlock()
   |                   |                   |                  |                |
   |                   |                   |<-----------------| CallResult     |
   |                   |                   | sendTransaction  |                |
@@ -425,305 +500,168 @@ The user burns shares to retrieve deposited tokens. Any pending revenue is
   |<------------------| "Withdraw success"|                  |                |
 ```
 
-**Token output calculation:**
-```
-amountOut = (sharesToBurn * totalDeposited) / totalShares
-```
+**Token output:** `amountOut = (sharesToBurn * totalDeposited) / totalShares`
 
-### 3.3 Claim Revenue Flow
+### 4.3 Claim Revenue Flow
 
-The user claims accumulated revenue without touching their deposit or shares.
+Claim accumulated vault revenue without touching deposit or shares.
 
 ```
  User              ClaimCard         useTransaction      OPNet SDK        RevenueVault
-  |                   |                   |                  |                |
-  | (sees pending     |                   |                  |                |
-  |  revenue > 0)     |                   |                  |                |
   |                   |                   |                  |                |
   | Click "Claim"     |                   |                  |                |
   |------------------>|                   |                  |                |
   |                   | execute(          |                  |                |
   |                   |  claimRevenue)    |                  |                |
   |                   |------------------>|                  |                |
-  |                   |                   | simulateFn()     |                |
-  |                   |                   |----------------->|                |
-  |                   |                   |                  | vault.claimRevenue()
+  |                   |                   |----------------->| vault.claimRevenue()
   |                   |                   |                  |--------------->|
-  |                   |                   |                  |                |
-  |                   |                   |                  |  CONTRACT LOGIC:
   |                   |                   |                  |  1. _whenNotPaused()
   |                   |                   |                  |  2. _nonReentrant()
-  |                   |                   |                  |  3. pending = _pendingRevenue(sender)
+  |                   |                   |                  |  3. calc pending revenue
   |                   |                   |                  |  4. require pending > 0
   |                   |                   |                  |  5. set debt = accumulator
-  |                   |                   |                  |  6. add pending to userClaimedRevenue
-  |                   |                   |                  |  7. transfer pending tokens to sender
-  |                   |                   |                  |  8. emit ClaimRevenue event
-  |                   |                   |                  |  9. _unlock()
-  |                   |                   |                  |                |
+  |                   |                   |                  |  6. transfer pending to sender
+  |                   |                   |                  |  7. emit ClaimRevenue
+  |                   |                   |                  |  8. _unlock()
   |                   |                   |<-----------------| CallResult     |
   |                   |                   | sendTransaction  |                |
   | [Wallet Popup] <--|-------------------|----------------->| sign & broadcast
-  |                   |                   |<-----------------| txId           |
-  |                   |<------------------| success          |                |
   |<------------------| "Claim success"   |                  |                |
 ```
 
-### 3.4 Auto-Compound Flow
+### 4.4 Claim All External Rewards Flow (RVT Vault)
 
-Instead of claiming revenue as tokens, the user reinvests it as additional
-vault shares, compounding their position.
+RVT stakers claim MOTO + PILL rewards in a single transaction.
 
 ```
- User              ClaimCard         useTransaction      OPNet SDK        RevenueVault
+ User              ClaimCard         useTransaction      OPNet SDK        RVT Vault
   |                   |                   |                  |                |
-  | Click "Compound"  |                   |                  |                |
+  | Click "Claim      |                   |                  |                |
+  |  All Rewards"     |                   |                  |                |
   |------------------>|                   |                  |                |
   |                   | execute(          |                  |                |
-  |                   |  autoCompound)    |                  |                |
+  |                   |  claimAllRewards) |                  |                |
   |                   |------------------>|                  |                |
-  |                   |                   | simulateFn()     |                |
-  |                   |                   |----------------->|                |
-  |                   |                   |                  | vault.autoCompound()
+  |                   |                   |----------------->| vault.claimAllRewards()
   |                   |                   |                  |--------------->|
-  |                   |                   |                  |                |
-  |                   |                   |                  |  CONTRACT LOGIC:
-  |                   |                   |                  |  1. _whenNotPaused()
-  |                   |                   |                  |  2. _nonReentrant()
-  |                   |                   |                  |  3. pending = _pendingRevenue(sender)
-  |                   |                   |                  |  4. require pending > 0
-  |                   |                   |                  |  5. calc newShares:
-  |                   |                   |                  |     newShares = (pending * totalShares) / totalDeposited
-  |                   |                   |                  |  6. set debt = accumulator
-  |                   |                   |                  |  7. add newShares to userShares
-  |                   |                   |                  |  8. add pending to userDeposited
-  |                   |                   |                  |  9. add newShares to totalShares
-  |                   |                   |                  |  10. add pending to totalDeposited
-  |                   |                   |                  |  11. add pending to userClaimedRevenue
-  |                   |                   |                  |  12. NO token transfer (stays in vault)
-  |                   |                   |                  |  13. emit AutoCompound event
-  |                   |                   |                  |  14. _unlock()
-  |                   |                   |                  |                |
-  |                   |                   |<-----------------| CallResult     |
-  |                   |                   | sendTransaction  |                |
-  | [Wallet Popup] <--|-------------------|----------------->| sign & broadcast
-  |                   |                   |<-----------------| txId           |
-  |                   |<------------------| success          |                |
-  |<------------------| "Compound success"|                  |                |
-```
-
-**Key difference from Claim:** No token transfer occurs. The revenue amount is
-treated as a new deposit, minting additional shares and increasing the user's
-deposited amount, all within the vault's existing token balance.
-
-### 3.5 Emergency Withdraw Flow
-
-Available even when the vault is paused. Burns ALL user shares and returns the
-proportional deposit. **Pending revenue is forfeited.**
-
-```
- User              Frontend          useTransaction      OPNet SDK        RevenueVault
-  |                   |                   |                  |                |
-  | Click "Emergency  |                   |                  |                |
-  |  Withdraw"        |                   |                  |                |
-  |------------------>|                   |                  |                |
-  |                   | execute(          |                  |                |
-  |                   | emergencyWithdraw)|                  |                |
-  |                   |------------------>|                  |                |
-  |                   |                   | simulateFn()     |                |
-  |                   |                   |----------------->|                |
-  |                   |                   |                  | vault.emergencyWithdraw()
-  |                   |                   |                  |--------------->|
-  |                   |                   |                  |                |
-  |                   |                   |                  |  CONTRACT LOGIC:
-  |                   |                   |                  |  (NO _whenNotPaused -- works when paused!)
   |                   |                   |                  |  1. _nonReentrant()
-  |                   |                   |                  |  2. require userShares > 0
-  |                   |                   |                  |  3. amountOut = (userShares * totalDep) / totalShares
-  |                   |                   |                  |  4. WIPE user state:
-  |                   |                   |                  |     - userShares[sender] = 0
-  |                   |                   |                  |     - userDeposited[sender] = 0
-  |                   |                   |                  |     - userRevenueDebt[sender] = 0
-  |                   |                   |                  |     (userClaimedRevenue preserved)
-  |                   |                   |                  |  5. sub shares from totalShares
-  |                   |                   |                  |  6. sub amountOut from totalDeposited
-  |                   |                   |                  |  7. transfer amountOut to sender
-  |                   |                   |                  |  8. emit EmergencyWithdraw event
-  |                   |                   |                  |  9. _unlock()
-  |                   |                   |                  |                |
-  |                   |                   |<-----------------| CallResult     |
+  |                   |                   |                  |  2. For reward slot 0 (MOTO):
+  |                   |                   |                  |     pending0 = calc from accumulator0
+  |                   |                   |                  |     if pending0 > 0:
+  |                   |                   |                  |       transfer MOTO to user
+  |                   |                   |                  |       update userRewardDebt0
+  |                   |                   |                  |  3. For reward slot 1 (PILL):
+  |                   |                   |                  |     pending1 = calc from accumulator1
+  |                   |                   |                  |     if pending1 > 0:
+  |                   |                   |                  |       transfer PILL to user
+  |                   |                   |                  |       update userRewardDebt1
+  |                   |                   |                  |  4. _unlock()
+  |                   |                   |<-----------------| reward0, reward1
   |                   |                   | sendTransaction  |                |
   | [Wallet Popup] <--|-------------------|----------------->| sign & broadcast
-  |                   |                   |<-----------------| txId           |
-  |<------------------| "Emergency exit"  |                  |                |
+  |<------------------| "Rewards claimed" |                  |                |
 ```
 
-**WARNING:** Pending revenue is NOT claimed. It remains in the accumulator
-and effectively gets redistributed to remaining shareholders.
+### 4.5 Auto-Compound Flow
 
-### 3.6 Collect Fees Flow (Revenue Distribution)
-
-Anyone can call `collectFees()` to inject revenue tokens into the vault.
-A protocol fee (configurable, default 5%) is skimmed and sent to the fee recipient.
-The remainder is distributed proportionally to all shareholders via the accumulator.
+Reinvest pending revenue as additional vault shares.
 
 ```
- Caller           Admin Page        useTransaction      OPNet SDK        RevenueVault     OP20 Token
-  |                   |                   |                  |                |                |
-  | Enter fee amount  |                   |                  |                |                |
-  |------------------>|                   |                  |                |                |
-  | Click "Collect"   |                   |                  |                |                |
-  |------------------>|                   |                  |                |                |
-  |                   | execute(          |                  |                |                |
-  |                   |  collectFees)     |                  |                |                |
-  |                   |------------------>|                  |                |                |
-  |                   |                   | simulateFn()     |                |                |
-  |                   |                   |----------------->|                |                |
-  |                   |                   |                  | vault.collectFees(amount)       |
-  |                   |                   |                  |--------------->|                |
-  |                   |                   |                  |                |                |
-  |                   |                   |                  |  CONTRACT LOGIC:                |
-  |                   |                   |                  |  1. _nonReentrant()             |
-  |                   |                   |                  |  2. require amount > 0          |
-  |                   |                   |                  |  3. require totalShares > 0     |
-  |                   |                   |                  |  4. protocolCut = amount * feeBps / 10000
-  |                   |                   |                  |  5. distributed = amount - protocolCut
-  |                   |                   |                  |  6. totalProtocolFees += protocolCut
-  |                   |                   |                  |  7. ACCUMULATOR UPDATE:         |
-  |                   |                   |                  |     perShareIncrease =          |
-  |                   |                   |                  |       (distributed * 1e18)      |
-  |                   |                   |                  |       / totalShares             |
-  |                   |                   |                  |     accumulator += perShareIncrease
-  |                   |                   |                  |  8. totalFees += amount         |
-  |                   |                   |                  |  9. transferFrom(caller, vault, amount)
-  |                   |                   |                  |  10. if protocolCut > 0:        |
-  |                   |                   |                  |      transfer(feeRecipient, protocolCut)
-  |                   |                   |                  |  11. emit CollectFees event     |
-  |                   |                   |                  |  12. _unlock()                  |
-  |                   |                   |                  |                |                |
-  |                   |                   |<-----------------| CallResult     |                |
-  |                   |                   | sendTransaction  |                |                |
-  | [Wallet Popup] <--|-------------------|----------------->| sign & broadcast               |
-  |                   |                   |<-----------------| txId           |                |
-  |<------------------| "Fees collected"  |                  |                |                |
+autoCompound():
+  1. _whenNotPaused()
+  2. _nonReentrant()
+  3. pending = _pendingRevenue(sender)
+  4. require pending > 0
+  5. newShares = (pending * totalShares) / totalDeposited
+  6. set debt = accumulator
+  7. add newShares to userShares + totalShares
+  8. add pending to userDeposited + totalDeposited
+  9. NO token transfer (stays in vault)
+  10. emit AutoCompound event
+  11. _unlock()
 ```
 
-**Important:** `collectFees()` is callable by ANYONE (no `_onlyOwner` check).
-This allows external systems, keepers, or dApps to feed revenue into the vault.
-The caller must have previously approved the vault to spend their tokens.
+### 4.6 Emergency Withdraw Flow
 
-### 3.7 Admin Flows
-
-All admin methods require `_onlyOwner()` (sender == deployer).
-
-#### 3.7.1 Pause / Unpause
+Available even when paused. Burns ALL user shares. **Pending revenue AND external rewards are forfeited.**
 
 ```
- Owner            Admin Page        useTransaction      OPNet SDK        RevenueVault
-  |                   |                   |                  |                |
-  | Click "Pause"     |                   |                  |                |
-  |------------------>| execute(pause)    |                  |                |
-  |                   |------------------>|                  |                |
-  |                   |                   |----------------->| vault.pause()  |
-  |                   |                   |                  |--------------->|
-  |                   |                   |                  | 1. _onlyOwner()|
-  |                   |                   |                  | 2. require !paused
-  |                   |                   |                  | 3. paused = true
-  |                   |                   |                  | 4. emit Paused |
-  |                   |                   |<-----------------| success        |
-  |                   |                   | sendTransaction  |                |
-  | [sign] <----------|-------------------|----------------->| broadcast      |
-  |                   |<------------------| txId             |                |
-  |                   |                   |                  |                |
-  | Click "Unpause"   |                   |                  |                |
-  |------------------>| execute(unpause)  |                  |                |
-  |                   |------------------>|                  |                |
-  |                   |                   |----------------->| vault.unpause()|
-  |                   |                   |                  |--------------->|
-  |                   |                   |                  | 1. _onlyOwner()|
-  |                   |                   |                  | 2. require paused
-  |                   |                   |                  | 3. paused = false
-  |                   |                   |                  | 4. emit Unpaused
-  |                   |                   |<-----------------| success        |
+emergencyWithdraw():
+  (NO _whenNotPaused — works when paused!)
+  1. _nonReentrant()
+  2. require userShares > 0
+  3. Settle external rewards (MOTO, PILL sent to user)
+  4. amountOut = (userShares * totalDeposited) / totalShares
+  5. WIPE user state (shares, deposited, debt all set to 0)
+  6. sub shares from totalShares, amountOut from totalDeposited
+  7. transfer amountOut to sender
+  8. emit EmergencyWithdraw event
+  9. _unlock()
 ```
 
-**Effects of pause:**
-- `deposit()` -- blocked
-- `withdraw()` -- blocked
-- `claimRevenue()` -- blocked
-- `autoCompound()` -- blocked
-- `emergencyWithdraw()` -- STILL WORKS
-- `collectFees()` -- STILL WORKS
+### 4.7 Collect Fees Flow
 
-#### 3.7.2 Set Minimum Deposit
+Anyone can inject revenue tokens into the vault. A protocol fee is skimmed and sent to the fee recipient (FeeRouter).
 
 ```
-Admin -> setMinimumDeposit(amount)
-  1. _onlyOwner()
-  2. require amount > 0
-  3. minimumDeposit = amount
-  4. emit MinimumDepositChanged(amount)
+collectFees(amount):
+  1. _nonReentrant()
+  2. require amount > 0, totalShares > 0
+  3. protocolCut = amount * feeBps / 10000
+  4. distributed = amount - protocolCut
+  5. ACCUMULATOR UPDATE:
+     perShareIncrease = (distributed * 1e18) / totalShares
+     accumulator += perShareIncrease
+  6. totalFees += amount
+  7. transferFrom(caller, vault, amount)
+  8. if protocolCut > 0: transfer(feeRecipient, protocolCut)
+  9. emit CollectFees event
+  10. _unlock()
 ```
 
-Default: `1e18` (1.0 tokens with 18 decimals).
-Applied only for the first deposit (when totalShares == 0).
-
-#### 3.7.3 Set Protocol Fee
+### 4.8 FeeRouter Distribute Flow
 
 ```
-Admin -> setProtocolFee(bps)
-  1. _onlyOwner()
-  2. require bps <= 2000  (max 20%)
-  3. protocolFeeBps = bps
-  4. emit ProtocolFeeChanged(bps)
+ Anyone           Frontend/Bot       OPNet SDK          FeeRouter       MOTO Token      RVT Vault
+  |                   |                  |                  |                |                |
+  | Click "Distribute"|                  |                  |                |                |
+  |------------------>|                  |                  |                |                |
+  |                   |----------------->| distribute(MOTO) |                |                |
+  |                   |                  |----------------->|                |                |
+  |                   |                  |                  |                |                |
+  |                   |                  |                  | balanceOf(self)|                |
+  |                   |                  |                  |--------------->|                |
+  |                   |                  |                  |<---------------| 50 MOTO        |
+  |                   |                  |                  |                |                |
+  |                   |                  |                  | teamCut = 5    |                |
+  |                   |                  |                  | vaultCut = 45  |                |
+  |                   |                  |                  |                |                |
+  |                   |                  |                  | transfer(team, 5)               |
+  |                   |                  |                  |--------------->|                |
+  |                   |                  |                  |                |                |
+  |                   |                  |                  | approve(rvtVault, 45)           |
+  |                   |                  |                  |--------------->|                |
+  |                   |                  |                  |                |                |
+  |                   |                  |                  | distributeReward(MOTO, 45)      |
+  |                   |                  |                  |------------------------------->|
+  |                   |                  |                  |                |                |
+  |                   |                  |                  |                | transferFrom   |
+  |                   |                  |                  |                |<---------------| (pulls 45 MOTO)
+  |                   |                  |                  |                |                |
+  |                   |                  |                  |                | update         |
+  |                   |                  |                  |                | accumulator0   |
+  |                   |                  |<-----------------| distributed    |                |
+  |                   |<-----------------| success          |                |                |
+  |<------------------| "Distribution    |                  |                |                |
+  |                   |  complete"       |                  |                |                |
 ```
-
-Default: 500 bps (5%). Range: 0 -- 2000 bps (0% -- 20%).
-
-#### 3.7.4 Set Fee Recipient
-
-```
-Admin -> setProtocolFeeRecipient(address)
-  1. _onlyOwner()
-  2. protocolFeeRecipient = address
-  3. emit FeeRecipientChanged(address)
-```
-
-Default: deployer address (tx.origin at deployment).
-
-#### 3.7.5 Set Cooldown Blocks
-
-```
-Admin -> setCooldownBlocks(blocks)
-  1. _onlyOwner()
-  2. require blocks <= 144  (max ~24 hours on Bitcoin)
-  3. cooldownBlocks = blocks
-  4. emit CooldownChanged(blocks)
-```
-
-Default: 6 blocks (~1 hour). Range: 0 -- 144 blocks.
-Set to 0 to disable the cooldown.
-
-#### 3.7.6 Set Deposit Token
-
-```
-Admin -> setDepositToken(tokenAddress)
-  1. _onlyOwner()
-  2. depositToken = tokenAddress
-```
-
-Must be called after deployment to configure which OP20 token the vault accepts.
-No event emitted (design choice -- set once after deploy).
 
 ---
 
-## 4. Revenue Distribution Algorithm (Detailed)
+## 5. Revenue Distribution Algorithm (Detailed)
 
-### 4.1 The Accumulator Model
-
-The vault uses a **global per-share accumulator** to track how much revenue each
-share is entitled to. This is the same model used by Synthetix StakingRewards,
-MasterChef, and similar DeFi protocols.
+### 5.1 The Accumulator Model
 
 **State variables:**
 
@@ -733,414 +671,375 @@ userRevenueDebt[user]        (per-user snapshot of accumulator)
 userShares[user]             (per-user share balance)
 ```
 
-### 4.2 Step-by-Step Math with Example
+### 5.2 Step-by-Step Math with Example
 
 **Initial State:**
-
 ```
-totalShares     = 0
-totalDeposited  = 0
-accumulator     = 0
+totalShares = 0, totalDeposited = 0, accumulator = 0
 ```
-
----
 
 **Step 1: Alice deposits 100 tokens**
-
 ```
 sharesToMint = 100   (first depositor, 1:1)
-
-totalShares     = 100
-totalDeposited  = 100
-userShares[A]   = 100
-userDebt[A]     = 0    (accumulator is 0)
+totalShares = 100, totalDeposited = 100
+userShares[A] = 100, userDebt[A] = 0
 ```
-
----
 
 **Step 2: Bob deposits 50 tokens**
-
 ```
 sharesToMint = (50 * 100) / 100 = 50
-
-totalShares     = 150
-totalDeposited  = 150
-userShares[B]   = 50
-userDebt[B]     = 0    (accumulator is still 0)
+totalShares = 150, totalDeposited = 150
+userShares[B] = 50, userDebt[B] = 0
 ```
 
----
-
-**Step 3: 30 tokens of fees are collected (5% protocol fee = 500 bps)**
-
+**Step 3: 30 tokens of fees collected (5% protocol fee)**
 ```
-protocolCut     = 30 * 500 / 10000 = 1.5 tokens  -> sent to feeRecipient
-distributed     = 30 - 1.5 = 28.5 tokens
+protocolCut = 30 * 500 / 10000 = 1.5 tokens → sent to FeeRouter
+distributed = 28.5 tokens
 
-perShareIncrease = (28.5 * 1e18) / 150 = 190000000000000000  (0.19 * 1e18)
-
-accumulator     = 0 + 190000000000000000 = 190000000000000000
-totalFees       = 30
+perShareIncrease = (28.5 * 1e18) / 150 = 190000000000000000
+accumulator = 190000000000000000
 ```
 
----
-
-**Step 4: Alice checks pending revenue**
-
+**Step 4: Alice checks pending**
 ```
-pendingRevenue[A] = (userShares[A] * (accumulator - userDebt[A])) / 1e18
-                  = (100 * (190000000000000000 - 0)) / 1e18
-                  = (100 * 190000000000000000) / 1e18
-                  = 19.0 tokens
-
-Alice is entitled to 19.0 out of 28.5 distributed (100/150 = 66.7%)
+pending[A] = (100 * (190000000000000000 - 0)) / 1e18 = 19.0 tokens
+(100/150 = 66.7% of 28.5 = 19.0)
 ```
 
----
-
-**Step 5: Bob checks pending revenue**
-
+**Step 5: Bob checks pending**
 ```
-pendingRevenue[B] = (50 * (190000000000000000 - 0)) / 1e18
-                  = 9.5 tokens
-
-Bob is entitled to 9.5 out of 28.5 distributed (50/150 = 33.3%)
-Verification: 19.0 + 9.5 = 28.5 (exact match with distributed)
+pending[B] = (50 * (190000000000000000 - 0)) / 1e18 = 9.5 tokens
+(50/150 = 33.3% of 28.5 = 9.5)
+Verification: 19.0 + 9.5 = 28.5 ✓
 ```
 
----
-
-**Step 6: Alice claims her revenue (19.0 tokens)**
-
+**Step 6: Alice claims (19.0 tokens)**
 ```
-userDebt[A]          = 190000000000000000  (set to current accumulator)
+userDebt[A] = 190000000000000000  (set to current accumulator)
 userClaimedRevenue[A] += 19.0
 transfer 19.0 tokens from vault to Alice
 ```
 
----
-
 **Step 7: Another 15 tokens of fees arrive**
-
 ```
-protocolCut     = 15 * 500 / 10000 = 0.75 tokens
-distributed     = 14.25 tokens
-
+protocolCut = 0.75, distributed = 14.25
 perShareIncrease = (14.25 * 1e18) / 150 = 95000000000000000
-
-accumulator     = 190000000000000000 + 95000000000000000 = 285000000000000000
+accumulator = 285000000000000000
 ```
-
----
 
 **Step 8: Alice checks again**
-
 ```
-pendingRevenue[A] = (100 * (285000000000000000 - 190000000000000000)) / 1e18
-                  = (100 * 95000000000000000) / 1e18
-                  = 9.5 tokens
-
-(Only the new fees, since she already claimed the first batch)
+pending[A] = (100 * (285000000000000000 - 190000000000000000)) / 1e18 = 9.5 tokens
+(Only new fees — she already claimed the first batch)
 ```
+
+### 5.3 What Happens During Key Operations
+
+| Operation | Accumulator Effect | Debt Effect |
+|-----------|-------------------|-------------|
+| `collectFees()` | accumulator += (distributed * 1e18) / totalShares | No change |
+| `deposit()` | No change (settleRevenue auto-claims first) | debt = accumulator |
+| `withdraw()` | No change (auto-claims first) | debt = accumulator (or 0) |
+| `claimRevenue()` | No change | debt = accumulator |
+| `autoCompound()` | No change | debt = accumulator |
+| `emergencyWithdraw()` | No change | debt = 0 (wiped) |
 
 ---
 
-**Step 9: Bob checks again**
+## 6. Fee Flow: End-to-End
+
+### 6.1 Complete Protocol Fee Flow
 
 ```
-pendingRevenue[B] = (50 * (285000000000000000 - 0)) / 1e18
-                  = 14.25 tokens
+Step 1: User deposits 1000 MOTO into MOTO Vault
+        ├── 950 MOTO stays in vault (for depositors)
+        └── 50 MOTO sent to FeeRouter (5% protocol fee)
 
-(Both batches, since Bob never claimed. 9.5 from first + 4.75 from second = 14.25)
+Step 2: FeeRouter now holds 50 MOTO
+
+Step 3: Anyone calls distribute(MOTO_token_address)
+        ├── FeeRouter checks balance: 50 MOTO
+        ├── Team cut (10%): 5 MOTO → team wallet
+        └── Vault cut (90%): 45 MOTO → RVT Vault via distributeReward()
+
+Step 4: RVT Vault updates MOTO reward accumulator
+        All RVT stakers now have pending MOTO rewards
+
+Step 5: RVT staker (holding 20% of staked RVT) calls claimAllRewards()
+        └── Receives 9 MOTO (20% of 45)
 ```
 
-### 4.3 What Happens During Key Operations
+### 6.2 Multi-Vault Revenue Example (Monthly)
 
-| Operation           | Accumulator Effect                        | Debt Effect                     |
-| ------------------- | ----------------------------------------- | ------------------------------- |
-| `collectFees()`     | accumulator += (distributed * 1e18) / totalShares | No change            |
-| `deposit()`         | No change (settleRevenue auto-claims first) | debt[user] = accumulator      |
-| `withdraw()`        | No change (auto-claims first)             | debt[user] = accumulator (or 0 if no remaining shares) |
-| `claimRevenue()`    | No change                                 | debt[user] = accumulator        |
-| `autoCompound()`    | No change                                 | debt[user] = accumulator        |
-| `emergencyWithdraw()` | No change                              | debt[user] = 0 (wiped)          |
+| Source | Monthly Fees | Protocol Cut (5%) | → RVT Stakers (90%) | → Team (10%) |
+|--------|-------------|-------------------|---------------------|--------------|
+| MOTO Vault | 10,000 MOTO | 500 MOTO | 450 MOTO | 50 MOTO |
+| PILL Vault | 6,000 PILL | 300 PILL | 270 PILL | 30 PILL |
+| RVT Vault | 4,000 RVT | 200 RVT | 180 RVT | 20 RVT |
 
-### 4.4 Settlement on Deposit
+**If you hold 20% of total staked RVT:**
+- 90 MOTO + 54 PILL + 36 RVT per month
 
-When a user deposits additional tokens, `_settleRevenue()` is called first.
-This auto-claims any pending revenue before the share balance changes, ensuring
-the user does not lose accrued revenue and the new shares start earning from the
-current accumulator value.
+### 6.3 Why This Model Works
 
-```
-_settleRevenue(user):
-    pending = _pendingRevenue(user)
-    if pending > 0:
-        userClaimedRevenue[user] += pending
-        transfer pending to user
-        emit ClaimRevenue
-    userRevenueDebt[user] = accumulator   // reset snapshot
-```
+1. **No sell pressure** — Protocol never sells MOTO or PILL. They flow directly to RVT stakers.
+2. **Aligned incentives** — Team earns by holding RVT (same as every staker) + 10% protocol cut.
+3. **Sustainable** — Revenue comes from vault activity, not inflation or emissions.
+4. **Trustless** — FeeRouter is on-chain. No admin can redirect fees. Anyone can trigger distribution.
 
 ---
 
-## 5. Contract Method Reference
+## 7. Contract Method Reference
 
-### 5.1 Write Methods
+### 7.1 RevenueVault — Write Methods
 
-| #  | Method                | Selector                         | Params                    | Returns          | Access    | Description                                           |
-| -- | --------------------- | -------------------------------- | ------------------------- | ---------------- | --------- | ----------------------------------------------------- |
-| 1  | `deposit`             | `deposit(uint256)`               | amount: uint256           | success: bool    | Public*   | Deposit tokens, receive proportional shares            |
-| 2  | `withdraw`            | `withdraw(uint256)`              | shares: uint256           | amountOut: uint256| Public*  | Burn shares, get tokens back + auto-claim revenue      |
-| 3  | `claimRevenue`        | `claimRevenue()`                 | (none)                    | claimed: uint256 | Public*   | Claim accumulated revenue                              |
-| 4  | `autoCompound`        | `autoCompound()`                 | (none)                    | newShares: uint256| Public*  | Reinvest pending revenue as new shares                 |
-| 5  | `collectFees`         | `collectFees(uint256)`           | amount: uint256           | success: bool    | Anyone    | Inject revenue tokens into vault for distribution      |
-| 6  | `emergencyWithdraw`   | `emergencyWithdraw()`            | (none)                    | amountOut: uint256| Anyone** | Withdraw all shares, forfeit pending revenue           |
+| # | Method | Params | Returns | Access | Description |
+|---|--------|--------|---------|--------|------------|
+| 1 | `deposit` | amount: uint256 | success: bool | Public* | Deposit tokens, receive shares |
+| 2 | `withdraw` | shares: uint256 | amountOut: uint256 | Public* | Burn shares, get tokens + auto-claim |
+| 3 | `claimRevenue` | (none) | claimed: uint256 | Public* | Claim vault revenue |
+| 4 | `autoCompound` | (none) | newShares: uint256 | Public* | Reinvest revenue as shares |
+| 5 | `collectFees` | amount: uint256 | success: bool | Anyone | Inject revenue for distribution |
+| 6 | `emergencyWithdraw` | (none) | amountOut: uint256 | Anyone** | Exit all shares |
+| 7 | `distributeReward` | token: address, amount: uint256 | success: bool | Anyone | Distribute external reward token |
+| 8 | `claimAllRewards` | (none) | reward0, reward1: uint256 | Public | Claim all external rewards |
 
-*Public = requires wallet connected, affected by pause state
-**Anyone = works even when paused
+*Public = requires wallet, affected by pause. **Anyone = works when paused.
 
-### 5.2 Admin Methods (Owner Only)
+### 7.2 RevenueVault — Admin Methods (Owner Only)
 
-| #  | Method                    | Selector                            | Params              | Returns       | Description                              |
-| -- | ------------------------- | ----------------------------------- | ------------------- | ------------- | ---------------------------------------- |
-| 7  | `pause`                   | `pause()`                           | (none)              | success: bool | Pause vault (blocks deposit/withdraw/claim) |
-| 8  | `unpause`                 | `unpause()`                         | (none)              | success: bool | Unpause vault                            |
-| 9  | `setMinimumDeposit`       | `setMinimumDeposit(uint256)`        | amount: uint256     | success: bool | Set minimum first-deposit amount         |
-| 10 | `setProtocolFee`          | `setProtocolFee(uint256)`           | bps: uint256        | success: bool | Set protocol fee (0-2000 bps, max 20%)   |
-| 11 | `setProtocolFeeRecipient` | `setProtocolFeeRecipient(address)`  | recipient: address  | success: bool | Set who receives protocol fee cut        |
-| 12 | `setCooldownBlocks`       | `setCooldownBlocks(uint256)`        | blocks: uint256     | success: bool | Set withdrawal cooldown (0-144 blocks)   |
-| 13 | `setDepositToken`         | `setDepositToken(address)`          | token: address      | success: bool | Set accepted OP20 token address          |
+| # | Method | Params | Returns | Description |
+|---|--------|--------|---------|------------|
+| 9 | `pause` | (none) | success: bool | Pause vault |
+| 10 | `unpause` | (none) | success: bool | Unpause vault |
+| 11 | `setMinimumDeposit` | amount: uint256 | success: bool | Set min deposit (default 1e18) |
+| 12 | `setProtocolFee` | bps: uint256 | success: bool | Set fee 0-2000 bps (max 20%) |
+| 13 | `setProtocolFeeRecipient` | recipient: address | success: bool | Set fee recipient |
+| 14 | `setCooldownBlocks` | blocks: uint256 | success: bool | Set cooldown 0-144 blocks |
+| 15 | `setDepositToken` | token: address | success: bool | Set accepted OP20 token |
+| 16 | `addRewardToken` | token: address | success: bool | Register external reward token (max 2) |
 
-### 5.3 View Methods (Read-Only)
+### 7.3 RevenueVault — View Methods
 
-| #  | Method             | Selector                      | Params            | Returns                                                          | Description                          |
-| -- | ------------------ | ----------------------------- | ----------------- | ---------------------------------------------------------------- | ------------------------------------ |
-| 14 | `getVaultInfo`     | `getVaultInfo()`              | (none)            | totalDeposited, totalShares, totalFees, accumulator (all uint256)| Global vault statistics              |
-| 15 | `getUserInfo`      | `getUserInfo(address)`        | user: address     | shares, deposited, pendingRevenue, totalClaimed (all uint256)    | Per-user position data               |
-| 16 | `previewDeposit`   | `previewDeposit(uint256)`     | amount: uint256   | shares: uint256                                                  | Preview shares for deposit amount    |
-| 17 | `previewWithdraw`  | `previewWithdraw(uint256)`    | shares: uint256   | amountOut: uint256                                               | Preview tokens for share burn        |
-| 18 | `getOwner`         | `getOwner()`                  | (none)            | owner: address                                                   | Get vault owner address              |
-| 19 | `isPaused`         | `isPaused()`                  | (none)            | paused: bool                                                     | Check if vault is paused             |
-| 20 | `getMinimumDeposit`| `getMinimumDeposit()`         | (none)            | minimumDeposit: uint256                                          | Get minimum deposit threshold        |
-| 21 | `getProtocolInfo`  | `getProtocolInfo()`           | (none)            | feeBps, feeRecipient, totalProtocolFees, cooldownBlocks          | Get protocol configuration           |
+| # | Method | Params | Returns | Description |
+|---|--------|--------|---------|------------|
+| 17 | `getVaultInfo` | (none) | totalDeposited, totalShares, totalFees, accumulator | Global stats |
+| 18 | `getUserInfo` | user: address | shares, deposited, pendingRevenue, totalClaimed | User position |
+| 19 | `previewDeposit` | amount: uint256 | shares: uint256 | Preview shares for deposit |
+| 20 | `previewWithdraw` | shares: uint256 | amountOut: uint256 | Preview tokens for withdrawal |
+| 21 | `getOwner` | (none) | owner: address | Contract owner |
+| 22 | `isPaused` | (none) | paused: bool | Pause status |
+| 23 | `getMinimumDeposit` | (none) | minimumDeposit: uint256 | Min deposit threshold |
+| 24 | `getDepositToken` | (none) | depositToken: address | Accepted token |
+| 25 | `getProtocolInfo` | (none) | feeBps, feeRecipient, totalProtocolFees, cooldownBlocks | Protocol config |
+| 26 | `getRewardInfo` | (none) | count, token0, totalDistributed0, token1, totalDistributed1 | Reward config |
+| 27 | `getUserRewardInfo` | user: address | pending0, pending1: uint256 | User pending rewards |
 
-**Total: 21 methods** (6 write + 7 admin + 8 view)
+**Total RevenueVault: 27 methods** (8 write + 8 admin + 11 view)
+
+### 7.4 FeeRouter — All Methods
+
+| # | Method | Params | Returns | Access | Description |
+|---|--------|--------|---------|--------|------------|
+| 1 | `distribute` | token: address | distributed: uint256 | **Anyone** | Split balance: 90% RVT vault, 10% team |
+| 2 | `setRvtVault` | vault: address | success: bool | Owner | Set RVT vault address |
+| 3 | `setTeamWallet` | wallet: address | success: bool | Owner | Set team wallet |
+| 4 | `setTeamBps` | bps: uint256 | success: bool | Owner | Set team cut 0-3000 bps (max 30%) |
+| 5 | `getConfig` | (none) | owner, rvtVault, teamWallet, teamBps, totalDistributed | View | Get config |
+| 6 | `getOwner` | (none) | owner: address | View | Contract owner |
+
+**Total FeeRouter: 6 methods** (1 write + 3 admin + 2 view)
 
 ---
 
-## 6. Frontend Component Map
+## 8. Frontend Component Map
 
-### 6.1 Page-Level Architecture
+### 8.1 Page Architecture
 
 ```
 App
  |
- +-- Layout (Header, Navigation, WalletConnect)
+ +-- VaultProvider (multi-vault context, persists selection to localStorage)
  |    |
- |    +-- Dashboard (/dashboard)
- |    |    |-- VaultStats          reads: getVaultInfo(), getProtocolInfo()
- |    |    |-- VaultGauge          reads: userInfo.shares / vaultInfo.totalShares
- |    |    |-- ClaimCard           calls: claimRevenue(), autoCompound()
- |    |    |-- "Your Position"     reads: getUserInfo()
- |    |    +-- isPaused banner     reads: isPaused()
- |    |
- |    +-- Deposit (/deposit)
- |    |    |-- DepositForm         calls: token.increaseAllowance(), vault.deposit()
- |    |    |                       reads: previewDeposit(), token.balanceOf()
- |    |    +-- VaultStats          reads: getVaultInfo(), getProtocolInfo()
- |    |
- |    +-- Withdraw (/withdraw)
- |    |    |-- WithdrawForm        calls: vault.withdraw()
- |    |    |                       reads: previewWithdraw(), getUserInfo()
- |    |    +-- VaultStats          reads: getVaultInfo(), getProtocolInfo()
- |    |
- |    +-- Admin (/admin)
- |         |-- VaultStats          reads: getVaultInfo(), getProtocolInfo()
- |         |-- Pause/Unpause       calls: vault.pause(), vault.unpause()
- |         |-- Set Min Deposit     calls: vault.setMinimumDeposit()
- |         |-- Set Protocol Fee    calls: vault.setProtocolFee()
- |         |-- Set Cooldown        calls: vault.setCooldownBlocks()
- |         |-- Set Fee Recipient   calls: vault.setProtocolFeeRecipient()
- |         |-- Set Deposit Token   calls: vault.setDepositToken()
- |         +-- Collect Fees        calls: vault.collectFees()
+ |    +-- Layout (Header, Navigation, WalletConnect)
+ |         |
+ |         +-- Vaults (/)
+ |         |    |-- VaultCard × 3       reads: getVaultInfo() per vault
+ |         |    |-- Protocol specs      static display
+ |         |    +-- selectVault()       sets context, navigates to Dashboard
+ |         |
+ |         +-- Dashboard (/dashboard)
+ |         |    |-- VaultStats          reads: getVaultInfo(), getProtocolInfo()
+ |         |    |-- VaultGauge × 2      reads: userShares / totalShares, revenue earned
+ |         |    |-- "Your Position"     reads: getUserInfo()
+ |         |    |-- ClaimCard           calls: claimRevenue(), autoCompound(), claimAllRewards()
+ |         |    +-- Quick Actions       navigates to Deposit/Claim/Withdraw/Admin
+ |         |
+ |         +-- Deposit (/deposit)
+ |         |    |-- DepositForm         calls: token.increaseAllowance(), vault.deposit()
+ |         |    |                       reads: previewDeposit(), token.balanceOf()
+ |         |    +-- VaultStats          reads: getVaultInfo(), getProtocolInfo()
+ |         |
+ |         +-- Withdraw (/withdraw)
+ |         |    |-- WithdrawForm        calls: vault.withdraw(), vault.emergencyWithdraw()
+ |         |    |                       reads: previewWithdraw(), getUserInfo()
+ |         |    +-- VaultStats
+ |         |
+ |         +-- Claim (/claim)
+ |         |    +-- ClaimCard           calls: claimRevenue(), autoCompound(), claimAllRewards()
+ |         |
+ |         +-- Tokenomics (/tokenomics)
+ |         |    |-- Fee flow diagram    static (no vault selection needed)
+ |         |    |-- Why RVT section
+ |         |    |-- Revenue example table
+ |         |    |-- Protocol specs
+ |         |    +-- On-chain features
+ |         |
+ |         +-- Admin (/admin)
+ |              |-- VaultStats
+ |              |-- Pause/Unpause       calls: vault.pause(), vault.unpause()
+ |              |-- Set Min Deposit     calls: vault.setMinimumDeposit()
+ |              |-- Set Protocol Fee    calls: vault.setProtocolFee()
+ |              |-- Set Fee Recipient   calls: vault.setProtocolFeeRecipient()
+ |              |-- Set Cooldown        calls: vault.setCooldownBlocks()
+ |              |-- Set Deposit Token   calls: vault.setDepositToken()
+ |              |-- Add Reward Token    calls: vault.addRewardToken()
+ |              |-- Collect Fees        calls: token.increaseAllowance(), vault.collectFees()
+ |              |-- Distribute Reward   calls: rewardToken.increaseAllowance(), vault.distributeReward()
+ |              +-- Fee Router          calls: feeRouter.setRvtVault(), setTeamWallet(), distribute()
  |
  +-- Hooks
-      |-- useVaultContract()   Creates typed contract proxies (vault + token)
-      |-- useVaultData()       Polls vault data every 15s (vaultInfo, userInfo, protocolInfo, balance)
-      +-- useTransaction()     Manages simulate -> send lifecycle with state machine
+      |-- useVaultContract()   Creates typed vault + token proxies for selected vault
+      |-- useVaultData()       Polls every 15s: vaultInfo, userInfo, protocolInfo, rewardInfo, balance
+      |-- useAllVaultsData()   Fetches getVaultInfo() for all vaults (Vaults page overview)
+      +-- useTransaction()     Simulate → send lifecycle with confirming state
 ```
 
-### 6.2 Data Flow Diagram
+### 8.2 Hook Responsibilities
 
-```
-                         useVaultContract()
-                               |
-               +---------------+---------------+
-               |                               |
-        vault: IVaultContract          token: IOP20Contract
-        (typed proxy over ABI)         (standard OP20 proxy)
-               |                               |
-               v                               v
-         useVaultData()                  useVaultData()
-         |  Polls every 15s:            |  tokenBalance:
-         |  - getVaultInfo()            |  - balanceOf(wallet)
-         |  - getUserInfo(wallet)       |
-         |  - getProtocolInfo()         |
-         |                              |
-         v                              v
-    +----------+  +----------+  +-----------+  +----------+
-    | VaultInfo|  | UserInfo |  |ProtocolInfo| |tokenBal  |
-    +----------+  +----------+  +-----------+  +----------+
-         |              |            |              |
-         |   +----------+------------+--------------+
-         |   |          |            |
-         v   v          v            v
-    +-----------+  +-----------+  +-----------+  +-----------+
-    | VaultStats|  | ClaimCard |  |DepositForm|  |WithdrawForm|
-    |           |  |           |  |           |  |            |
-    | totalDep  |  | pending   |  | balance   |  | shares     |
-    | totalShrs |  | claimed   |  | preview   |  | preview    |
-    | totalFees |  |           |  |           |  | pending    |
-    | feeBps    |  |           |  |           |  |            |
-    +-----------+  +-----------+  +-----------+  +-----------+
+| Hook | Purpose | Depends On |
+|------|---------|-----------|
+| `useVaultContract` | Creates typed IVaultContract + IOP20Contract proxies using `getContract()` from opnet SDK | WalletConnect provider, network, selectedVault |
+| `useVaultData` | Polls vault state every 15s. Returns vaultInfo, userInfo, protocolInfo, rewardInfo, userRewardInfo, tokenBalance, tokenMismatch | useVaultContract, walletAddress |
+| `useAllVaultsData` | Fetches getVaultInfo() for all configured vaults. Used by Vaults page for overview cards | WalletConnect network |
+| `useTransaction` | State machine for simulate→send flow. States: idle→simulating→pending→confirming→success/error. Supports ignoreRevert and waitForConfirmation | WalletConnect walletAddress + network |
+
+### 8.3 VaultContext
+
+```typescript
+interface VaultContextValue {
+    selectedVault: VaultEntry | null;    // Currently selected vault
+    availableVaults: readonly VaultEntry[];  // All vaults for current network
+    selectVault: (id: string) => void;   // Switch vault by id
+}
 ```
 
-### 6.3 Hook Responsibilities
-
-| Hook                | Purpose                                           | Depends On               |
-| ------------------- | ------------------------------------------------- | ------------------------ |
-| `useVaultContract`  | Creates typed IVaultContract + IOP20Contract proxies using getContract() from opnet SDK | WalletConnect provider, network, contract addresses |
-| `useVaultData`      | Polls vault state every 15s, returns vaultInfo/userInfo/protocolInfo/tokenBalance | useVaultContract, walletAddress |
-| `useTransaction`    | State machine for simulate->send flow, handles errors, exposes {state, execute, reset} | WalletConnect walletAddress + network |
-
-### 6.4 Component-to-Contract Method Mapping
-
-| Component       | Contract Methods Called                                     | Purpose                            |
-| --------------- | ----------------------------------------------------------- | ---------------------------------- |
-| DepositForm     | `token.increaseAllowance()`, `vault.deposit()`, `vault.previewDeposit()` | Two-step approve+deposit flow  |
-| WithdrawForm    | `vault.withdraw()`, `vault.previewWithdraw()`              | Burn shares, auto-claim revenue    |
-| ClaimCard       | `vault.claimRevenue()`, `vault.autoCompound()`             | Claim or reinvest pending revenue  |
-| VaultStats      | (reads from useVaultData props)                            | Display vault-wide statistics      |
-| VaultGauge      | (reads from props)                                         | Radial gauge for share % and earned|
-| Dashboard       | `vault.isPaused()` + all useVaultData reads                | Overview page with position info   |
-| Admin           | `vault.pause()`, `vault.unpause()`, `vault.setMinimumDeposit()`, `vault.setProtocolFee()`, `vault.setProtocolFeeRecipient()`, `vault.setCooldownBlocks()`, `vault.setDepositToken()`, `vault.collectFees()`, `vault.getOwner()`, `vault.isPaused()`, `vault.getMinimumDeposit()` | Full admin control panel |
+Selection persisted to `localStorage` under key `rvault-selected-vault`.
 
 ---
 
-## 7. Deployment Flow
+## 9. Deployment Flow
 
-### 7.1 Contract Deployment
-
-```
-Step 1: Compile AssemblyScript to WASM
-+----------------------------+
-| $ npm run build            |
-| asc src/RevenueVault.ts    |
-|   --target release         |
-|   --exportRuntime          |
-| Output: build/contract.wasm|
-+----------------------------+
-
-Step 2: Deploy via OPNet CLI or SDK
-+-------------------------------------+
-| Deploy RevenueVault.wasm to Bitcoin  |
-| L1 via OPNet deployment transaction. |
-|                                      |
-| onDeployment() runs automatically:   |
-|   - owner = tx.origin (deployer)     |
-|   - totalDeposited = 0               |
-|   - totalShares = 0                  |
-|   - totalFees = 0                    |
-|   - accumulator = 0                  |
-|   - paused = false                   |
-|   - minimumDeposit = 1e18            |
-|   - locked = false                   |
-|   - protocolFeeBps = 500 (5%)        |
-|   - protocolFeeRecipient = deployer  |
-|   - totalProtocolFees = 0            |
-|   - cooldownBlocks = 6              |
-+-------------------------------------+
-
-Step 3: Configure Deposit Token (REQUIRED)
-+------------------------------------------+
-| Owner calls setDepositToken(tokenAddress)|
-| This tells the vault which OP20 token    |
-| to accept for deposits and use for       |
-| revenue distribution.                    |
-|                                          |
-| Without this step, all deposit/withdraw  |
-| calls will fail (zero address token).    |
-+------------------------------------------+
-```
-
-### 7.2 Post-Deployment Configuration Checklist
+### 9.1 Contract Compilation
 
 ```
-+---+-------------------------------+----------------------------------+----------+
-| # | Action                        | Command                          | Required |
-+---+-------------------------------+----------------------------------+----------+
-| 1 | Set deposit token             | setDepositToken(tokenAddr)       | YES      |
-| 2 | Adjust protocol fee           | setProtocolFee(bps)              | Optional |
-|   |   (default 500 = 5%)          |                                  |          |
-| 3 | Set fee recipient             | setProtocolFeeRecipient(addr)    | Optional |
-|   |   (default = deployer)        |                                  |          |
-| 4 | Set cooldown blocks           | setCooldownBlocks(n)             | Optional |
-|   |   (default = 6 blocks)        |                                  |          |
-| 5 | Set minimum deposit           | setMinimumDeposit(amount)        | Optional |
-|   |   (default = 1e18)            |                                  |          |
-+---+-------------------------------+----------------------------------+----------+
+# RevenueVault (used for all 3 vaults)
+cd contracts
+npm install
+npm run build              # → build/contract.wasm
+
+# FeeRouter
+npm run build:feerouter    # → build/FeeRouter.wasm
+
+# RVT Token
+cd ../token
+npm install
+npm run build              # → build/contract.wasm
 ```
 
-### 7.3 Frontend Configuration
+### 9.2 Deployment Order
 
-After deploying the contract, update the frontend configuration:
+```
+Step 1: Deploy RVT Token (OP20, fixed supply 100M)
+Step 2: Deploy RevenueVault.wasm × 3 (MOTO, PILL, RVT vaults)
+Step 3: Deploy FeeRouter.wasm × 1
+```
 
-**File: `src/config/contracts.ts`**
+### 9.3 Post-Deployment Configuration
+
+```
+┌───┬────────────────────────────────────────────────────────┬──────────┐
+│ # │ Action                                                 │ Required │
+├───┼────────────────────────────────────────────────────────┼──────────┤
+│   │ FOR EACH VAULT (MOTO, PILL, RVT):                     │          │
+│ 1 │ setDepositToken(token_address)                         │ YES      │
+│ 2 │ setProtocolFee(500)  — 5% = 500 bps                   │ Optional │
+│   │                                                        │          │
+│   │ FOR MOTO + PILL VAULTS:                                │          │
+│ 3 │ setProtocolFeeRecipient(FeeRouter_address)             │ YES      │
+│   │                                                        │          │
+│   │ FOR RVT VAULT:                                         │          │
+│ 4 │ setProtocolFeeRecipient(FeeRouter_address)             │ YES      │
+│ 5 │ addRewardToken(MOTO_token_address)                     │ YES      │
+│ 6 │ addRewardToken(PILL_token_address)                     │ YES      │
+│   │                                                        │          │
+│   │ FOR FEEROUTER:                                         │          │
+│ 7 │ setRvtVault(RVT_vault_address)                         │ YES      │
+│ 8 │ setTeamWallet(team_wallet_address)                     │ YES      │
+│   │ setTeamBps(1000) — 10% default, already set            │ Optional │
+└───┴────────────────────────────────────────────────────────┴──────────┘
+```
+
+### 9.4 Frontend Configuration
+
+After deploying contracts, update `frontend/src/config/contracts.ts`:
 
 ```typescript
-const CONTRACT_ADDRESSES: Map<string, ContractAddresses> = new Map([
+const NETWORK_VAULTS: Map<string, NetworkVaults> = new Map([
     ['testnet', {
-        vault: '<DEPLOYED_VAULT_ADDRESS>',
-        depositToken: '<OP20_TOKEN_ADDRESS>',
-    }],
-    ['mainnet', {
-        vault: '<MAINNET_VAULT_ADDRESS>',
-        depositToken: '<MAINNET_TOKEN_ADDRESS>',
+        feeRouter: '<FEEROUTER_ADDRESS>',
+        vaults: [
+            { id: 'moto', vault: '<MOTO_VAULT>', depositToken: '<MOTO_TOKEN>', ... },
+            { id: 'pill', vault: '<PILL_VAULT>', depositToken: '<PILL_TOKEN>', ... },
+            { id: 'rvt',  vault: '<RVT_VAULT>',  depositToken: '<RVT_TOKEN>',  ... },
+        ],
     }],
 ]);
 ```
 
-### 7.4 End-to-End Deployment Sequence
+### 9.5 End-to-End Sequence
 
 ```
 Deployer                 Bitcoin L1 (OPNet)              Frontend
    |                          |                             |
-   | 1. Deploy WASM           |                             |
-   |------------------------->|                             |
-   |                          | contract live               |
-   |<-------------------------|                             |
-   |                          |                             |
-   | 2. setDepositToken(MOTO) |                             |
+   | 1. Deploy RVT Token      |                             |
    |------------------------->|                             |
    |                          |                             |
-   | 3. (optional) setProtocolFee, setCooldown, etc.        |
+   | 2. Deploy Vault × 3      |                             |
    |------------------------->|                             |
    |                          |                             |
-   | 4. Update contracts.ts   |                             |
-   |----------------------------------------------------->  |
+   | 3. Deploy FeeRouter       |                             |
+   |------------------------->|                             |
    |                          |                             |
-   | 5. Build & deploy frontend                             |
-   |----------------------------------------------------->  |
+   | 4. Configure all contracts (8 transactions)            |
+   |------------------------->|                             |
    |                          |                             |
-   |                          |      6. Users connect       |
-   |                          |      wallets & interact     |
+   | 5. Update contracts.ts + push to GitHub                |
+   |------------------------------------------------------>|
+   |                          |                             |
+   | 6. Vercel auto-deploys                                 |
+   |                          |                             |
+   |                          |      7. Users connect       |
+   |                          |      wallets & deposit      |
    |                          |<----------------------------|
    |                          |                             |
-   | 7. collectFees() to distribute revenue                 |
+   |   8. Fees accumulate in FeeRouter                      |
+   |                          |                             |
+   |   9. Anyone calls distribute() — fees flow to stakers  |
    |------------------------->|                             |
-   |                          |   accumulator updated       |
-   |                          |   users see pending revenue |
+   |                          |   RVT stakers see pending   |
+   |                          |   MOTO + PILL + RVT rewards |
    |                          |<----------------------------|
 ```
 
@@ -1148,63 +1047,93 @@ Deployer                 Bitcoin L1 (OPNet)              Frontend
 
 ## Appendix A: Constants
 
-| Constant                    | Value           | Description                            |
-| --------------------------- | --------------- | -------------------------------------- |
-| `PRECISION`                 | 1e18            | Scaling factor for accumulator math    |
-| `DEFAULT_MIN_DEPOSIT`       | 1e18            | 1.0 tokens (18 decimals)              |
-| `DEFAULT_COOLDOWN_BLOCKS`   | 6               | ~1 hour on Bitcoin (~10 min/block)     |
-| `DEFAULT_PROTOCOL_FEE_BPS`  | 500             | 5% (500 basis points)                  |
-| `BPS_DENOMINATOR`           | 10000           | 100% in basis points                   |
-| `MAX_SAT_TO_SPEND`          | 1,000,000       | 0.01 BTC safety cap (frontend)         |
-| `POLL_INTERVAL`             | 15,000 ms       | Frontend data refresh interval         |
+| Constant | Value | Description |
+|----------|-------|------------|
+| `PRECISION` | 1e18 | Scaling factor for accumulator math |
+| `DEFAULT_MIN_DEPOSIT` | 1e18 | 1.0 tokens (18 decimals) |
+| `DEFAULT_COOLDOWN_BLOCKS` | 6 | ~1 hour on Bitcoin (~10 min/block) |
+| `DEFAULT_PROTOCOL_FEE_BPS` | 500 | 5% (500 basis points) |
+| `DEFAULT_TEAM_BPS` | 1000 | 10% (FeeRouter team cut) |
+| `MAX_TEAM_BPS` | 3000 | 30% (FeeRouter max cap) |
+| `BPS_DENOMINATOR` | 10000 | 100% in basis points |
+| `MAX_REWARD_TOKENS` | 2 | External reward token limit |
+| `MAX_SAT_TO_SPEND` | 1,000,000 | 0.01 BTC safety cap (frontend) |
+| `POLL_INTERVAL` | 15,000 ms | Frontend data refresh interval |
+| `CONFIRM_TIMEOUT` | 900,000 ms | 15 min tx confirmation timeout |
 
 ## Appendix B: Error Messages
 
-| Error                                | Method(s)             | Cause                                      |
-| ------------------------------------ | --------------------- | ------------------------------------------ |
-| `Only owner`                         | All admin methods     | Non-owner called admin function            |
-| `Vault is paused`                    | deposit, withdraw, claim, compound | Vault is paused             |
-| `Reentrancy`                         | All write methods     | Reentrant call detected                    |
-| `Deposit amount must be > 0`         | deposit               | Zero amount                                |
-| `First deposit must be >= minimum`   | deposit               | First deposit below minimumDeposit         |
-| `Deposit too small for shares`       | deposit               | Amount rounds to 0 shares                  |
-| `Fee amount must be > 0`             | collectFees           | Zero fee amount                            |
-| `No shares exist to distribute fees` | collectFees           | No depositors yet                          |
-| `No revenue to claim`                | claimRevenue          | Zero pending revenue                       |
-| `Shares must be > 0`                | withdraw              | Zero shares                                |
-| `Insufficient shares`                | withdraw              | More shares than owned                     |
-| `Withdrawal cooldown active`         | withdraw              | Too soon after deposit                     |
-| `No shares to withdraw`              | emergencyWithdraw     | User has no position                       |
-| `No revenue to compound`             | autoCompound          | Zero pending revenue                       |
-| `Revenue too small to compound`      | autoCompound          | Revenue rounds to 0 new shares             |
-| `Already paused`                     | pause                 | Vault already paused                       |
-| `Not paused`                         | unpause               | Vault not paused                           |
-| `Min deposit must be > 0`            | setMinimumDeposit     | Zero minimum                               |
-| `Fee too high (max 20%)`             | setProtocolFee        | bps > 2000                                 |
-| `Cooldown too long (max 144 blocks)` | setCooldownBlocks     | blocks > 144                               |
-| `Token transferFrom failed`          | deposit, collectFees  | Insufficient allowance or balance          |
-| `Token transfer failed`              | withdraw, claim, etc. | Vault lacks tokens (should not happen)     |
+| Error | Method(s) | Cause |
+|-------|-----------|-------|
+| `Only owner` | All admin methods | Non-owner called admin function |
+| `Vault is paused` | deposit, withdraw, claim, compound | Vault is paused |
+| `Reentrancy` | All write methods | Reentrant call detected |
+| `Deposit amount must be > 0` | deposit | Zero amount |
+| `First deposit must be >= minimum` | deposit | Below minimumDeposit |
+| `Deposit too small for shares` | deposit | Rounds to 0 shares |
+| `Fee amount must be > 0` | collectFees | Zero fee amount |
+| `No shares exist to distribute fees` | collectFees | No depositors |
+| `No revenue to claim` | claimRevenue | Zero pending |
+| `Shares must be > 0` | withdraw | Zero shares |
+| `Insufficient shares` | withdraw | More than owned |
+| `Withdrawal cooldown active` | withdraw | Too soon after deposit |
+| `No shares to withdraw` | emergencyWithdraw | No position |
+| `No revenue to compound` | autoCompound | Zero pending |
+| `Already paused` | pause | Already paused |
+| `Not paused` | unpause | Not paused |
+| `Fee too high (max 20%)` | setProtocolFee | bps > 2000 |
+| `Cooldown too long (max 144)` | setCooldownBlocks | blocks > 144 |
+| `Max reward tokens reached` | addRewardToken | Already 2 tokens |
+| `RVT vault not set` | FeeRouter.distribute | rvtVault is zero |
+| `Team wallet not set` | FeeRouter.distribute | teamWallet is zero |
+| `No balance to distribute` | FeeRouter.distribute | Zero token balance |
+| `Team bps too high` | FeeRouter.setTeamBps | bps > 3000 |
 
 ## Appendix C: Cross-Contract Calls
 
-The vault makes two types of OP20 cross-contract calls:
+### RevenueVault Cross-Contract Calls
 
-**1. `transferFrom(sender, vault, amount)` -- Pull tokens in**
+**1. `transferFrom(sender, vault, amount)` — Pull tokens in**
 ```
-Used by: deposit(), collectFees()
-Selector: encodeSelector('transferFrom(address,address,uint256)')
+Used by: deposit(), collectFees(), distributeReward()
 Requires: sender has approved vault for >= amount
 ```
 
-**2. `transfer(recipient, amount)` -- Push tokens out**
+**2. `transfer(recipient, amount)` — Push tokens out**
 ```
-Used by: withdraw(), claimRevenue(), emergencyWithdraw(), autoCompound (no),
-         collectFees() (protocol cut to feeRecipient)
-Selector: encodeSelector('transfer(address,uint256)')
-Vault must hold sufficient token balance
+Used by: withdraw(), claimRevenue(), emergencyWithdraw(),
+         collectFees() (protocol cut to feeRecipient),
+         claimAllRewards() (external rewards to user)
+```
+
+### FeeRouter Cross-Contract Calls
+
+**1. `balanceOf(self)` — Check own token balance**
+```
+Used by: distribute()
+Calls OP20 token contract to check how much FeeRouter holds
+```
+
+**2. `transfer(teamWallet, amount)` — Send team cut**
+```
+Used by: distribute()
+Sends team percentage directly to team wallet
+```
+
+**3. `approve(rvtVault, amount)` — Approve RVT vault to pull tokens**
+```
+Used by: distribute()
+FeeRouter approves RVT vault before calling distributeReward
+```
+
+**4. `distributeReward(token, amount)` — Push rewards to RVT vault**
+```
+Used by: distribute()
+Cross-contract call to RVT vault. Blockchain.tx.sender = FeeRouter address.
+RVT vault calls transferFrom(FeeRouter, self, amount) using the approval.
 ```
 
 ---
 
-*Generated for the RVault Protocol competition submission.*
-*Contract: RevenueVault.ts | Frontend: React 19 + OPNet SDK | Chain: Bitcoin L1 via OPNet*
+*RVault Protocol — Multi-vault revenue sharing on Bitcoin L1 via OPNet*
+*Contracts: RevenueVault.ts + FeeRouter.ts | Token: RVT (OP20) | Frontend: React 19 + OPNet SDK*
