@@ -224,63 +224,51 @@ export function Tokenomics() {
                 </div>
             </div>
 
-            {/* ─── ROADMAP ─── */}
+            {/* ─── CONTRACT FEATURES ─── */}
             <div>
                 <h2 className="text-[12px] font-semibold uppercase tracking-widest text-gray-600">
-                    Roadmap
+                    On-Chain Features
                 </h2>
 
-                <div className="mt-4 space-y-0">
+                <div className="mt-4 space-y-2">
                     {[
                         {
-                            phase: 'Phase 1',
-                            title: 'Treasury receives protocol fees',
+                            title: 'Multi-token reward distribution',
+                            desc: 'RVT vault accepts up to 2 external reward tokens (MOTO, PILL) via distributeReward(). Same Synthetix accumulator, separate accumulators per token.',
                             status: 'live',
-                            desc: 'Protocol fees from all vaults routed to designated treasury. Separation of protocol and personal funds.',
                         },
                         {
-                            phase: 'Phase 2',
-                            title: 'FeeRouter auto-distributes to RVT stakers',
-                            status: 'next',
-                            desc: 'Smart contract that automatically routes MOTO/PILL/RVT fees to RVT vault depositors. No manual intervention.',
+                            title: 'Auto-settle on withdraw',
+                            desc: 'External rewards are automatically claimed when users withdraw or emergency exit. No pending rewards left behind.',
+                            status: 'live',
                         },
                         {
-                            phase: 'Phase 3',
-                            title: 'Governance controls fee parameters',
-                            status: 'planned',
+                            title: 'Claim all rewards in one transaction',
+                            desc: 'claimAllRewards() settles MOTO + PILL pending amounts in a single call. Gas efficient, user friendly.',
+                            status: 'live',
+                        },
+                        {
+                            title: 'Governance (planned)',
                             desc: 'RVT holders vote on protocol fee percentage, treasury allocation, and new vault integrations.',
+                            status: 'planned',
                         },
-                    ].map((item, i) => (
-                        <div key={item.phase} className="flex gap-4">
-                            {/* Timeline line */}
-                            <div className="flex flex-col items-center">
-                                <div
-                                    className="h-3 w-3 rounded-full"
-                                    style={{
-                                        background: item.status === 'live' ? '#00ffaa' :
-                                            item.status === 'next' ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.06)',
-                                        border: item.status === 'live' ? 'none' : '1px solid rgba(255,255,255,0.1)',
-                                    }}
-                                />
-                                {i < 2 && (
-                                    <div className="h-full w-px min-h-[3rem]" style={{ background: 'rgba(255,255,255,0.06)' }} />
-                                )}
-                            </div>
-
-                            {/* Content */}
-                            <div className="pb-6">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[11px] font-semibold uppercase tracking-widest text-gray-600">
-                                        {item.phase}
-                                    </span>
-                                    {item.status === 'live' && (
-                                        <span className="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest"
-                                            style={{ background: 'rgba(0,255,170,0.1)', color: '#00ffaa' }}>
-                                            Live
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="mt-1 text-[13px] font-semibold text-gray-300">{item.title}</div>
+                    ].map((item) => (
+                        <div
+                            key={item.title}
+                            className="flex items-start gap-3 rounded-lg px-5 py-4"
+                            style={{
+                                background: 'rgba(255,255,255,0.02)',
+                                border: '1px solid rgba(255,255,255,0.05)',
+                            }}
+                        >
+                            <div
+                                className="mt-1 h-2 w-2 shrink-0 rounded-full"
+                                style={{
+                                    background: item.status === 'live' ? '#00ffaa' : 'rgba(255,255,255,0.1)',
+                                }}
+                            />
+                            <div>
+                                <div className="text-[13px] font-semibold text-gray-300">{item.title}</div>
                                 <div className="mt-1 text-[12px] text-gray-600">{item.desc}</div>
                             </div>
                         </div>
