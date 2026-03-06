@@ -35,6 +35,7 @@ export function DepositForm({ onSuccess, tokenBalance = 0n, tokenSymbol = 'TOKEN
 
     /**
      * Single-click deposit: approve + deposit back-to-back (MotoSwap pattern).
+     * Always approve before deposit — never rely on cached allowance state.
      * Both txs land in the same block — approve runs first, then deposit uses the allowance.
      * Only the deposit tx waits for on-chain confirmation.
      */
@@ -46,27 +47,14 @@ export function DepositForm({ onSuccess, tokenBalance = 0n, tokenSymbol = 'TOKEN
         );
         const vaultAddr = await contracts.vault.contractAddress;
 
-        // Check if we need approval
-        let needsApproval = true;
-        try {
-            const allowanceResult = await contracts.token.allowance(userAddress, vaultAddr);
-            if (!allowanceResult.revert) {
-                const current = (allowanceResult.properties.remaining as bigint) ?? 0n;
-                needsApproval = current < parsedAmount;
-            }
-        } catch {
-            // If allowance check fails, approve to be safe
-        }
+        // Step 1: Always approve — RPC state can be stale on Bitcoin (10min blocks).
+        // Skipping approve based on allowance() is unreliable and causes intermittent failures.
+        setStep('approving');
+        const approveTxId = await approveTx.execute(async () => {
+            return await contracts.token.increaseAllowance(vaultAddr, parsedAmount);
+        });
 
-        if (needsApproval) {
-            // Step 1: Approve — broadcast only, don't wait for confirmation
-            setStep('approving');
-            const approveTxId = await approveTx.execute(async () => {
-                return await contracts.token.increaseAllowance(vaultAddr, parsedAmount);
-            });
-
-            if (!approveTxId) return; // approve simulation failed
-        }
+        if (!approveTxId) return; // approve simulation failed
 
         // Step 2: Deposit — ignoreRevert because the approve is in mempool (simulation
         // sees old state), but on-chain both txs land in the same block.
@@ -77,7 +65,7 @@ export function DepositForm({ onSuccess, tokenBalance = 0n, tokenSymbol = 'TOKEN
             },
             {
                 waitForConfirmation: activeProvider,
-                ignoreRevert: needsApproval, // only skip revert check if we just approved
+                ignoreRevert: true, // always ignore — approve is always in mempool
             },
         );
 

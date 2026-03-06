@@ -150,23 +150,12 @@ export function Admin() {
 
         const vaultAddr = await contracts.vault.contractAddress;
 
-        // Check if we need approval
-        let needsApproval = true;
-        try {
-            const allowanceResult = await contracts.token.allowance(userAddress, vaultAddr);
-            if (!allowanceResult.revert) {
-                const current = (allowanceResult.properties.remaining as bigint) ?? 0n;
-                needsApproval = current < parsed;
-            }
-        } catch { /* approve to be safe */ }
-
-        if (needsApproval) {
-            setFeesStep('approve');
-            const approveTxId = await approveFeesTx.execute(async () => {
-                return await contracts.token.increaseAllowance(vaultAddr, parsed);
-            });
-            if (!approveTxId) return;
-        }
+        // Always approve — RPC state can be stale on Bitcoin (10min blocks)
+        setFeesStep('approve');
+        const approveTxId = await approveFeesTx.execute(async () => {
+            return await contracts.token.increaseAllowance(vaultAddr, parsed);
+        });
+        if (!approveTxId) return;
 
         setFeesStep('send');
         const txId = await collectFeesTx.execute(
@@ -175,7 +164,7 @@ export function Admin() {
             },
             {
                 waitForConfirmation: getActiveProvider(),
-                ignoreRevert: needsApproval,
+                ignoreRevert: true,
             },
         );
 
@@ -294,23 +283,12 @@ export function Admin() {
             userAddress,
         );
 
-        // Check allowance
-        let needsApproval = true;
-        try {
-            const allowanceResult = await rewardToken.allowance(userAddress, vaultAddr);
-            if (!allowanceResult.revert) {
-                const current = (allowanceResult.properties.remaining as bigint) ?? 0n;
-                needsApproval = current < parsed;
-            }
-        } catch { /* approve to be safe */ }
-
-        if (needsApproval) {
-            setDistStep('approve');
-            const approveTxId = await approveDistTx.execute(async () => {
-                return await rewardToken.increaseAllowance(vaultAddr, parsed);
-            });
-            if (!approveTxId) return;
-        }
+        // Always approve — RPC state can be stale on Bitcoin (10min blocks)
+        setDistStep('approve');
+        const approveTxId = await approveDistTx.execute(async () => {
+            return await rewardToken.increaseAllowance(vaultAddr, parsed);
+        });
+        if (!approveTxId) return;
 
         setDistStep('send');
         const txId = await distributeTx.execute(
@@ -322,7 +300,7 @@ export function Admin() {
             },
             {
                 waitForConfirmation: getActiveProvider(),
-                ignoreRevert: needsApproval,
+                ignoreRevert: true,
             },
         );
 
