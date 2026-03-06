@@ -4,8 +4,8 @@ import type { AbstractRpcProvider } from 'opnet';
 import type { TransactionState } from '../types/vault';
 
 const MAX_SAT_TO_SPEND = 1_000_000n; // 0.01 BTC safety cap
-const CONFIRM_POLL_MS = 3_000;
-const CONFIRM_TIMEOUT_MS = 120_000; // 2 min max wait
+const CONFIRM_POLL_MS = 4_000;
+const CONFIRM_TIMEOUT_MS = 900_000; // 15 min — blocks can take 10+ min
 const AVG_BLOCK_TIME_SECS = 600; // Bitcoin ~10 min
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
