@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useVaultContext } from '../context/VaultContext';
 import { useAllVaultsData, type VaultOverview } from '../hooks/useAllVaultsData';
@@ -138,11 +139,30 @@ export function Vaults() {
                     <span className="text-gray-700">·</span>
                     <span>No epochs</span>
                 </div>
+
+                <p className="mt-4 max-w-2xl text-[13px] leading-relaxed text-gray-600">
+                    Accepts OP20 token deposits and issues pro-rata shares. Revenue pushed via{' '}
+                    <code className="rounded bg-white/[0.04] px-1.5 py-0.5 font-mono text-[12px] text-gray-400">collectFees()</code>{' '}
+                    updates a global accumulator — Synthetix staking math — so every depositor's cut is O(1).
+                    Claim earnings as tokens or auto-compound into more shares.
+                </p>
             </div>
 
             {/* ─── VAULT CARDS ─── */}
             <div>
-                <div className="mb-5 h-px w-full" style={{ background: 'rgba(255,255,255,0.06)' }} />
+                <div className="mb-6 flex flex-wrap items-center gap-2 text-[11px]">
+                    {['Deposit tokens', 'Receive shares', 'Earn fees', 'Claim or compound'].map((step, i, arr) => (
+                        <Fragment key={step}>
+                            <span
+                                className="rounded-md px-2.5 py-1 text-gray-500"
+                                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}
+                            >
+                                {step}
+                            </span>
+                            {i < arr.length - 1 && <span className="text-gray-700">→</span>}
+                        </Fragment>
+                    ))}
+                </div>
 
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
                     {vaults.length > 0 ? (
@@ -157,6 +177,45 @@ export function Vaults() {
                             <p className="text-sm text-gray-500">No vaults available on this network</p>
                         </div>
                     )}
+                </div>
+
+                {/* Protocol specs */}
+                <div className="mt-8 flex flex-wrap items-center gap-2">
+                    {[
+                        { label: 'Math', value: 'Synthetix accumulator, 1e18' },
+                        { label: 'Cooldown', value: '6 blocks after deposit' },
+                        { label: 'Fee', value: '5% protocol (max 20%)' },
+                        { label: 'Emergency exit', value: 'always available' },
+                    ].map((item) => (
+                        <div
+                            key={item.label}
+                            className="rounded-lg px-3 py-1.5 text-[11px]"
+                            style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
+                        >
+                            <span className="text-gray-600">{item.label}</span>
+                            <span className="ml-1.5 text-gray-400">{item.value}</span>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Source links */}
+                <div className="mt-3 flex items-center gap-4 text-[11px] text-gray-600">
+                    <a
+                        href="https://github.com/jonathan-moore58/RVault-Protocol"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="transition-colors hover:text-gray-400"
+                    >
+                        GitHub ↗
+                    </a>
+                    <a
+                        href="https://docs.opnet.org"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="transition-colors hover:text-gray-400"
+                    >
+                        OPNet Docs ↗
+                    </a>
                 </div>
             </div>
 
