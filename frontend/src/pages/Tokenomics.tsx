@@ -76,30 +76,44 @@ export function Tokenomics() {
                             border: '1px solid rgba(0,255,170,0.08)',
                         }}>
                             <div className="text-[11px] font-semibold uppercase tracking-widest text-[#00ffaa]/60">5%</div>
-                            <div className="mt-1 text-[13px] text-gray-400">Protocol treasury</div>
+                            <div className="mt-1 text-[13px] text-gray-400">FeeRouter contract</div>
                             <div className="mt-2 text-[11px] text-gray-600">
-                                Redistributed to RVT stakers. No tokens sold on market.
+                                On-chain contract splits fees trustlessly. No human wallet in the path.
                             </div>
                         </div>
                     </div>
 
-                    {/* Arrow down */}
+                    {/* Arrow down — FeeRouter split */}
                     <div className="flex items-center gap-2 py-3 pl-4">
                         <div className="h-8 w-px" style={{ background: 'rgba(0,255,170,0.15)' }} />
-                        <span className="text-[11px] text-gray-600">treasury → RVT vault</span>
+                        <span className="text-[11px] text-gray-600">FeeRouter splits automatically</span>
                     </div>
 
-                    {/* Final destination */}
-                    <div className="rounded-lg p-4" style={{
-                        background: 'rgba(191,90,242,0.04)',
-                        border: '1px solid rgba(191,90,242,0.12)',
-                    }}>
-                        <div className="flex items-center gap-2">
-                            <div className="h-2 w-2 rounded-full bg-[#bf5af2]" />
-                            <span className="text-[13px] font-semibold text-gray-300">RVT Stakers</span>
+                    {/* 90/10 split */}
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-4">
+                        <div className="flex-[9] rounded-lg p-4" style={{
+                            background: 'rgba(191,90,242,0.04)',
+                            border: '1px solid rgba(191,90,242,0.12)',
+                        }}>
+                            <div className="text-[11px] font-semibold uppercase tracking-widest text-[#bf5af2]/60">90%</div>
+                            <div className="flex items-center gap-2 mt-1">
+                                <div className="h-2 w-2 rounded-full bg-[#bf5af2]" />
+                                <span className="text-[13px] font-semibold text-gray-300">RVT Stakers</span>
+                            </div>
+                            <div className="mt-2 text-[12px] text-gray-500">
+                                Earn MOTO + PILL + RVT from all three vaults. Hold RVT to capture protocol-wide revenue.
+                            </div>
                         </div>
-                        <div className="mt-2 text-[12px] text-gray-500">
-                            Earn MOTO + PILL + RVT from all three vaults. Hold RVT to capture protocol-wide revenue.
+
+                        <div className="flex-1 rounded-lg p-4" style={{
+                            background: 'rgba(255,255,255,0.02)',
+                            border: '1px solid rgba(255,255,255,0.05)',
+                        }}>
+                            <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-600">10%</div>
+                            <div className="mt-1 text-[13px] text-gray-400">Team</div>
+                            <div className="mt-2 text-[11px] text-gray-600">
+                                Operations + development. On-chain, transparent, capped at 30%.
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -160,7 +174,8 @@ export function Tokenomics() {
                                 <th className="px-5 py-3 font-semibold text-gray-500">Source</th>
                                 <th className="px-5 py-3 font-semibold text-gray-500">Monthly fees</th>
                                 <th className="px-5 py-3 font-semibold text-gray-500">Protocol cut (5%)</th>
-                                <th className="px-5 py-3 font-semibold text-gray-500">→ RVT stakers</th>
+                                <th className="px-5 py-3 font-semibold text-gray-500">→ RVT stakers (90%)</th>
+                                <th className="px-5 py-3 font-semibold text-gray-500">→ Team (10%)</th>
                             </tr>
                         </thead>
                         <tbody className="text-gray-400">
@@ -168,19 +183,22 @@ export function Tokenomics() {
                                 <td className="px-5 py-3 font-medium" style={{ color: '#00ffaa' }}>MOTO Vault</td>
                                 <td className="px-5 py-3">10,000 MOTO</td>
                                 <td className="px-5 py-3">500 MOTO</td>
-                                <td className="px-5 py-3 text-gray-300">500 MOTO</td>
+                                <td className="px-5 py-3 text-gray-300">450 MOTO</td>
+                                <td className="px-5 py-3 text-gray-600">50 MOTO</td>
                             </tr>
                             <tr style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
                                 <td className="px-5 py-3 font-medium" style={{ color: '#ff6b6b' }}>PILL Vault</td>
                                 <td className="px-5 py-3">6,000 PILL</td>
                                 <td className="px-5 py-3">300 PILL</td>
-                                <td className="px-5 py-3 text-gray-300">300 PILL</td>
+                                <td className="px-5 py-3 text-gray-300">270 PILL</td>
+                                <td className="px-5 py-3 text-gray-600">30 PILL</td>
                             </tr>
                             <tr style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
                                 <td className="px-5 py-3 font-medium" style={{ color: '#bf5af2' }}>RVT Vault</td>
                                 <td className="px-5 py-3">4,000 RVT</td>
                                 <td className="px-5 py-3">200 RVT</td>
-                                <td className="px-5 py-3 text-gray-300">200 RVT</td>
+                                <td className="px-5 py-3 text-gray-300">180 RVT</td>
+                                <td className="px-5 py-3 text-gray-600">20 RVT</td>
                             </tr>
                         </tbody>
                     </table>
@@ -189,7 +207,7 @@ export function Tokenomics() {
                         background: 'rgba(255,255,255,0.02)',
                         borderTop: '1px solid rgba(255,255,255,0.04)',
                     }}>
-                        If you hold 20% of total RVT supply staked → you earn 100 MOTO + 60 PILL + 40 RVT per month
+                        If you hold 20% of total RVT supply staked → you earn 90 MOTO + 54 PILL + 36 RVT per month
                     </div>
                 </div>
             </div>
@@ -207,7 +225,7 @@ export function Tokenomics() {
                         { label: 'Deposit cooldown', value: '6 blocks (~1 hour on Bitcoin)' },
                         { label: 'Emergency exit', value: 'Always available, bypasses cooldown' },
                         { label: 'RVT supply', value: '100,000,000 (fixed, no inflation)' },
-                        { label: 'Fee routing', value: 'On-chain, transparent, auditable' },
+                        { label: 'Fee routing', value: 'FeeRouter contract — trustless 90/10 split, permissionless distribution' },
                     ].map((item) => (
                         <div
                             key={item.label}
@@ -245,6 +263,11 @@ export function Tokenomics() {
                         {
                             title: 'Claim all rewards in one transaction',
                             desc: 'claimAllRewards() settles MOTO + PILL pending amounts in a single call. Gas efficient, user friendly.',
+                            status: 'live',
+                        },
+                        {
+                            title: 'Trustless FeeRouter',
+                            desc: 'Dedicated contract receives protocol fees and splits them on-chain: 90% to RVT vault stakers, 10% to team. Anyone can trigger distribution — no admin needed.',
                             status: 'live',
                         },
                         {

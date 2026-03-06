@@ -5,6 +5,11 @@
             "outFile": "build/RevenueVault.wasm",
             "textFile": "build/RevenueVault.wat",
             "use": ["abort=src/index/abort"]
+        },
+        "feerouter": {
+            "outFile": "build/FeeRouter.wasm",
+            "textFile": "build/FeeRouter.wat",
+            "use": ["abort=src/feerouter-index/abort"]
         }
     },
     "options": {

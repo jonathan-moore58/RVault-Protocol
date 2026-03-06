@@ -15,12 +15,14 @@ export interface VaultEntry {
 
 interface NetworkVaults {
     readonly vaults: readonly VaultEntry[];
+    readonly feeRouter?: string; // FeeRouter contract address (trustless fee distribution)
 }
 
 const NETWORK_VAULTS: Map<string, NetworkVaults> = new Map([
     [
         'testnet',
         {
+            feeRouter: '', // Set after deploying FeeRouter WASM
             vaults: [
                 {
                     id: 'moto',
@@ -79,4 +81,13 @@ export function getNetworkVaults(network: Network): readonly VaultEntry[] {
 export function getDefaultVault(network: Network): VaultEntry | null {
     const vaults = getNetworkVaults(network);
     return vaults[0] ?? null;
+}
+
+export function getFeeRouterAddress(network: Network): string | null {
+    let key = 'testnet';
+    if (network === networks.regtest) key = 'regtest';
+    if (network === networks.bitcoin) key = 'mainnet';
+
+    const config = NETWORK_VAULTS.get(key);
+    return config?.feeRouter || null;
 }

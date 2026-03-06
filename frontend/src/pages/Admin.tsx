@@ -13,6 +13,8 @@ import { Address } from '@btc-vision/transaction';
 import { useVaultContext } from '../context/VaultContext';
 import { providerService } from '../services/ProviderService';
 import { getNetworkConfig, DEFAULT_NETWORK } from '../config/networks';
+import { getFeeRouterAddress } from '../config/contracts';
+import { FEE_ROUTER_ABI } from '../abi/FeeRouterABI';
 
 const pageVariants = {
     initial: { opacity: 0, y: 20 },
@@ -37,6 +39,14 @@ export function Admin() {
     const addRewardTx = useTransaction();
     const approveDistTx = useTransaction();
     const distributeTx = useTransaction();
+
+    // FeeRouter state
+    const setRvtVaultTx = useTransaction();
+    const setTeamWalletTx = useTransaction();
+    const feeRouterDistTx = useTransaction();
+    const [frRvtVaultInput, setFrRvtVaultInput] = useState('');
+    const [frTeamWalletInput, setFrTeamWalletInput] = useState('');
+    const [frDistTokenInput, setFrDistTokenInput] = useState('');
 
     const [isPaused, setIsPaused] = useState<boolean | null>(null);
     const [owner, setOwner] = useState<Address | null>(null);
@@ -322,6 +332,46 @@ export function Admin() {
             approveDistTx.reset();
             setTimeout(() => void refetch(), 2000);
         }
+    }
+
+    // --- FeeRouter helpers ---
+    const activeNetwork = network ?? getNetworkConfig(DEFAULT_NETWORK).network;
+    const feeRouterAddr = getFeeRouterAddress(activeNetwork);
+
+    function getFeeRouterContract() {
+        if (!feeRouterAddr) return null;
+        const fallbackNetwork = network ?? getNetworkConfig(DEFAULT_NETWORK).network;
+        const activeProvider = provider ?? providerService.getProvider(fallbackNetwork);
+        return getContract(feeRouterAddr, FEE_ROUTER_ABI, activeProvider, fallbackNetwork);
+    }
+
+    async function handleSetRvtVault() {
+        const router = getFeeRouterContract();
+        if (!router || !isValidHexAddress(frRvtVaultInput)) return;
+        const txId = await setRvtVaultTx.execute(
+            async () => (router as any).setRvtVault(Address.fromString(frRvtVaultInput.trim())),
+            { waitForConfirmation: getActiveProvider() },
+        );
+        if (txId) setFrRvtVaultInput('');
+    }
+
+    async function handleSetTeamWallet() {
+        const router = getFeeRouterContract();
+        if (!router || !isValidHexAddress(frTeamWalletInput)) return;
+        const txId = await setTeamWalletTx.execute(
+            async () => (router as any).setTeamWallet(Address.fromString(frTeamWalletInput.trim())),
+            { waitForConfirmation: getActiveProvider() },
+        );
+        if (txId) setFrTeamWalletInput('');
+    }
+
+    async function handleFeeRouterDistribute() {
+        const router = getFeeRouterContract();
+        if (!router || !isValidHexAddress(frDistTokenInput)) return;
+        await feeRouterDistTx.execute(
+            async () => (router as any).distribute(Address.fromString(frDistTokenInput.trim())),
+            { waitForConfirmation: getActiveProvider() },
+        );
     }
 
     return (
@@ -894,6 +944,88 @@ export function Admin() {
                                 )}
                                 <TransactionStatus state={distributeTx.state} onReset={distributeTx.reset} />
                             </div>
+                        </div>
+                    </div>
+                </motion.div>
+            )}
+
+            {/* ── FeeRouter (Trustless Fee Distribution) ── */}
+            {feeRouterAddr && isOwner && (
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+                    <div className="mb-4 flex items-center gap-2">
+                        <div className="h-px flex-1 bg-gray-800" />
+                        <span className="text-xs font-bold uppercase tracking-widest text-gray-500">Fee Router</span>
+                        <div className="h-px flex-1 bg-gray-800" />
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                        {/* Set RVT Vault */}
+                        <div className="card-glass rounded-2xl p-6">
+                            <h3 className="mb-1 text-sm font-bold text-gray-300">Set RVT Vault</h3>
+                            <p className="mb-4 text-[11px] text-gray-600">Target vault for 90% of fees</p>
+                            <input
+                                type="text"
+                                value={frRvtVaultInput}
+                                onChange={(e) => setFrRvtVaultInput(e.target.value)}
+                                placeholder="RVT vault address (0x...)"
+                                className="input-neon w-full rounded-xl px-4 py-3 text-sm font-medium text-white placeholder-gray-700 outline-none font-mono"
+                            />
+                            <motion.button
+                                whileHover={{ scale: 1.005 }}
+                                whileTap={{ scale: 0.995 }}
+                                onClick={handleSetRvtVault}
+                                disabled={!isValidHexAddress(frRvtVaultInput) || setRvtVaultTx.state.status !== 'idle'}
+                                className="btn-ghost mt-3 w-full rounded-xl py-3 text-sm font-semibold"
+                            >
+                                Set RVT Vault
+                            </motion.button>
+                            <TransactionStatus state={setRvtVaultTx.state} onReset={setRvtVaultTx.reset} />
+                        </div>
+
+                        {/* Set Team Wallet */}
+                        <div className="card-glass rounded-2xl p-6">
+                            <h3 className="mb-1 text-sm font-bold text-gray-300">Set Team Wallet</h3>
+                            <p className="mb-4 text-[11px] text-gray-600">Receives 10% team cut</p>
+                            <input
+                                type="text"
+                                value={frTeamWalletInput}
+                                onChange={(e) => setFrTeamWalletInput(e.target.value)}
+                                placeholder="Team wallet address (0x...)"
+                                className="input-neon w-full rounded-xl px-4 py-3 text-sm font-medium text-white placeholder-gray-700 outline-none font-mono"
+                            />
+                            <motion.button
+                                whileHover={{ scale: 1.005 }}
+                                whileTap={{ scale: 0.995 }}
+                                onClick={handleSetTeamWallet}
+                                disabled={!isValidHexAddress(frTeamWalletInput) || setTeamWalletTx.state.status !== 'idle'}
+                                className="btn-ghost mt-3 w-full rounded-xl py-3 text-sm font-semibold"
+                            >
+                                Set Team Wallet
+                            </motion.button>
+                            <TransactionStatus state={setTeamWalletTx.state} onReset={setTeamWalletTx.reset} />
+                        </div>
+
+                        {/* Distribute via Router */}
+                        <div className="card-glass rounded-2xl p-6">
+                            <h3 className="mb-1 text-sm font-bold text-gray-300">Distribute</h3>
+                            <p className="mb-4 text-[11px] text-gray-600">Push router balance → 90% RVT vault, 10% team</p>
+                            <input
+                                type="text"
+                                value={frDistTokenInput}
+                                onChange={(e) => setFrDistTokenInput(e.target.value)}
+                                placeholder="Token address (0x...)"
+                                className="input-neon w-full rounded-xl px-4 py-3 text-sm font-medium text-white placeholder-gray-700 outline-none font-mono"
+                            />
+                            <motion.button
+                                whileHover={{ scale: 1.005 }}
+                                whileTap={{ scale: 0.995 }}
+                                onClick={handleFeeRouterDistribute}
+                                disabled={!isValidHexAddress(frDistTokenInput) || feeRouterDistTx.state.status !== 'idle'}
+                                className="btn-ghost mt-3 w-full rounded-xl py-3 text-sm font-semibold"
+                            >
+                                Distribute Token
+                            </motion.button>
+                            <TransactionStatus state={feeRouterDistTx.state} onReset={feeRouterDistTx.reset} />
                         </div>
                     </div>
                 </motion.div>

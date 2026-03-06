@@ -4,6 +4,8 @@
     "type": "module",
     "scripts": {
         "build": "asc src/index.ts --config asconfig.json --target vault",
+        "build:feerouter": "asc src/feerouter-index.ts --config asconfig.json --target feerouter",
+        "build:all": "npm run build && npm run build:feerouter",
         "clean": "rm -rf build/*"
     },
     "dependencies": {
