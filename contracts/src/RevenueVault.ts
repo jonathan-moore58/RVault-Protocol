@@ -143,6 +143,35 @@ const OP20_TRANSFER_FROM_SELECTOR: Selector = encodeSelector(
     }
 }
 
+@final class DistributeRewardEvent extends NetEvent {
+    constructor(sender: Address, token: Address, amount: u256) {
+        const data = new BytesWriter(ADDRESS_BYTE_LENGTH * 2 + U256_BYTE_LENGTH);
+        data.writeAddress(sender);
+        data.writeAddress(token);
+        data.writeU256(amount);
+        super('DistributeReward', data);
+    }
+}
+
+@final class ClaimRewardEvent extends NetEvent {
+    constructor(user: Address, token: Address, amount: u256) {
+        const data = new BytesWriter(ADDRESS_BYTE_LENGTH * 2 + U256_BYTE_LENGTH);
+        data.writeAddress(user);
+        data.writeAddress(token);
+        data.writeU256(amount);
+        super('ClaimReward', data);
+    }
+}
+
+@final class RewardTokenAddedEvent extends NetEvent {
+    constructor(slot: u256, token: Address) {
+        const data = new BytesWriter(U256_BYTE_LENGTH + ADDRESS_BYTE_LENGTH);
+        data.writeU256(slot);
+        data.writeAddress(token);
+        super('RewardTokenAdded', data);
+    }
+}
+
 export class RevenueVault extends OP_NET {
     // --- Storage pointers ---
     private readonly depositTokenPointer: u16 = Blockchain.nextPointer;
@@ -163,6 +192,17 @@ export class RevenueVault extends OP_NET {
     private readonly totalProtocolFeesPointer: u16 = Blockchain.nextPointer;
     private readonly cooldownBlocksPointer: u16 = Blockchain.nextPointer;
     private readonly userLastDepositBlockPointer: u16 = Blockchain.nextPointer;
+
+    // --- External reward token storage (2 slots) ---
+    private readonly rewardTokenCountPointer: u16 = Blockchain.nextPointer;
+    private readonly rewardToken0Pointer: u16 = Blockchain.nextPointer;
+    private readonly rewardAccum0Pointer: u16 = Blockchain.nextPointer;
+    private readonly rewardTotal0Pointer: u16 = Blockchain.nextPointer;
+    private readonly rewardUserDebt0Pointer: u16 = Blockchain.nextPointer;
+    private readonly rewardToken1Pointer: u16 = Blockchain.nextPointer;
+    private readonly rewardAccum1Pointer: u16 = Blockchain.nextPointer;
+    private readonly rewardTotal1Pointer: u16 = Blockchain.nextPointer;
+    private readonly rewardUserDebt1Pointer: u16 = Blockchain.nextPointer;
 
     // --- Storage instances ---
     private readonly depositTokenStore: StoredAddress = new StoredAddress(this.depositTokenPointer);
@@ -213,6 +253,20 @@ export class RevenueVault extends OP_NET {
         this.userLastDepositBlockPointer,
     );
 
+    // --- External reward storage instances ---
+    private readonly rewardTokenCountStore: StoredU256 = new StoredU256(
+        this.rewardTokenCountPointer,
+        EMPTY_POINTER,
+    );
+    private readonly rewardToken0Store: StoredAddress = new StoredAddress(this.rewardToken0Pointer);
+    private readonly rewardAccum0Store: StoredU256 = new StoredU256(this.rewardAccum0Pointer, EMPTY_POINTER);
+    private readonly rewardTotal0Store: StoredU256 = new StoredU256(this.rewardTotal0Pointer, EMPTY_POINTER);
+    private readonly rewardUserDebt0Map: AddressMemoryMap = new AddressMemoryMap(this.rewardUserDebt0Pointer);
+    private readonly rewardToken1Store: StoredAddress = new StoredAddress(this.rewardToken1Pointer);
+    private readonly rewardAccum1Store: StoredU256 = new StoredU256(this.rewardAccum1Pointer, EMPTY_POINTER);
+    private readonly rewardTotal1Store: StoredU256 = new StoredU256(this.rewardTotal1Pointer, EMPTY_POINTER);
+    private readonly rewardUserDebt1Map: AddressMemoryMap = new AddressMemoryMap(this.rewardUserDebt1Pointer);
+
     public constructor() {
         super();
     }
@@ -232,6 +286,12 @@ export class RevenueVault extends OP_NET {
         this.protocolFeeRecipientStore.value = Blockchain.tx.origin;
         this.totalProtocolFeesStore.value = u256.Zero;
         this.cooldownBlocksStore.value = DEFAULT_COOLDOWN_BLOCKS;
+
+        this.rewardTokenCountStore.value = u256.Zero;
+        this.rewardAccum0Store.value = u256.Zero;
+        this.rewardTotal0Store.value = u256.Zero;
+        this.rewardAccum1Store.value = u256.Zero;
+        this.rewardTotal1Store.value = u256.Zero;
     }
 
     // No manual execute() override needed — OPNetTransform auto-generates
@@ -395,6 +455,159 @@ export class RevenueVault extends OP_NET {
     }
 
     // =============================================
+    // EXTERNAL REWARD ADMIN
+    // =============================================
+
+    @method({ name: 'token', type: ABIDataTypes.ADDRESS })
+    @returns({ name: 'success', type: ABIDataTypes.BOOL })
+    private addRewardToken(calldata: Calldata): BytesWriter {
+        this._onlyOwner();
+        const token: Address = calldata.readAddress();
+        const count: u256 = this.rewardTokenCountStore.value;
+        const MAX_REWARD_TOKENS: u256 = u256.fromU64(2);
+
+        if (u256.ge(count, MAX_REWARD_TOKENS)) {
+            throw new Revert('Max 2 reward tokens');
+        }
+
+        // Prevent duplicates
+        if (u256.gt(count, u256.Zero) && this.rewardToken0Store.value == token) {
+            throw new Revert('Token already added');
+        }
+
+        if (u256.eq(count, u256.Zero)) {
+            this.rewardToken0Store.value = token;
+        } else {
+            this.rewardToken1Store.value = token;
+        }
+
+        const newCount: u256 = SafeMath.add(count, u256.One);
+        this.rewardTokenCountStore.value = newCount;
+
+        this.emitEvent(new RewardTokenAddedEvent(count, token));
+
+        const writer: BytesWriter = new BytesWriter(1);
+        writer.writeBoolean(true);
+        return writer;
+    }
+
+    // =============================================
+    // EXTERNAL REWARD WRITE
+    // =============================================
+
+    @method(
+        { name: 'token', type: ABIDataTypes.ADDRESS },
+        { name: 'amount', type: ABIDataTypes.UINT256 },
+    )
+    @returns({ name: 'success', type: ABIDataTypes.BOOL })
+    private distributeReward(calldata: Calldata): BytesWriter {
+        this._nonReentrant();
+
+        const token: Address = calldata.readAddress();
+        const amount: u256 = calldata.readU256();
+        const sender: Address = Blockchain.tx.sender;
+        const currentTotalShares: u256 = this.totalSharesStore.value;
+
+        if (u256.eq(amount, u256.Zero)) {
+            throw new Revert('Amount must be > 0');
+        }
+        if (u256.eq(currentTotalShares, u256.Zero)) {
+            throw new Revert('No shares exist');
+        }
+
+        // Find which slot this token belongs to
+        const count: u256 = this.rewardTokenCountStore.value;
+        let slot: i32 = -1;
+
+        if (u256.gt(count, u256.Zero) && this.rewardToken0Store.value == token) {
+            slot = 0;
+        } else if (u256.gt(count, u256.One) && this.rewardToken1Store.value == token) {
+            slot = 1;
+        }
+
+        if (slot < 0) {
+            throw new Revert('Token not registered as reward');
+        }
+
+        // Update accumulator for this slot
+        const scaledAmount: u256 = SafeMath.mul(amount, PRECISION);
+        const perShareIncrease: u256 = SafeMath.div(scaledAmount, currentTotalShares);
+
+        if (slot == 0) {
+            this.rewardAccum0Store.value = SafeMath.add(this.rewardAccum0Store.value, perShareIncrease);
+            this.rewardTotal0Store.value = SafeMath.add(this.rewardTotal0Store.value, amount);
+        } else {
+            this.rewardAccum1Store.value = SafeMath.add(this.rewardAccum1Store.value, perShareIncrease);
+            this.rewardTotal1Store.value = SafeMath.add(this.rewardTotal1Store.value, amount);
+        }
+
+        // Transfer tokens from sender to vault
+        this._transferTokenFrom(token, sender, amount);
+
+        this.emitEvent(new DistributeRewardEvent(sender, token, amount));
+
+        this._unlock();
+
+        const writer: BytesWriter = new BytesWriter(1);
+        writer.writeBoolean(true);
+        return writer;
+    }
+
+    @method()
+    @returns(
+        { name: 'reward0', type: ABIDataTypes.UINT256 },
+        { name: 'reward1', type: ABIDataTypes.UINT256 },
+    )
+    private claimAllRewards(_calldata: Calldata): BytesWriter {
+        this._whenNotPaused();
+        this._nonReentrant();
+
+        const sender: Address = Blockchain.tx.sender;
+        const shares: u256 = this.userSharesMap.get(sender);
+
+        if (u256.eq(shares, u256.Zero)) {
+            throw new Revert('No shares');
+        }
+
+        const count: u256 = this.rewardTokenCountStore.value;
+        let claimed0: u256 = u256.Zero;
+        let claimed1: u256 = u256.Zero;
+
+        // Claim slot 0
+        if (u256.gt(count, u256.Zero)) {
+            claimed0 = this._pendingReward0(sender);
+            if (u256.gt(claimed0, u256.Zero)) {
+                this.rewardUserDebt0Map.set(sender, this.rewardAccum0Store.value);
+                const token0: Address = this.rewardToken0Store.value;
+                this._transferTokenTo(token0, sender, claimed0);
+                this.emitEvent(new ClaimRewardEvent(sender, token0, claimed0));
+            } else {
+                this.rewardUserDebt0Map.set(sender, this.rewardAccum0Store.value);
+            }
+        }
+
+        // Claim slot 1
+        if (u256.gt(count, u256.One)) {
+            claimed1 = this._pendingReward1(sender);
+            if (u256.gt(claimed1, u256.Zero)) {
+                this.rewardUserDebt1Map.set(sender, this.rewardAccum1Store.value);
+                const token1: Address = this.rewardToken1Store.value;
+                this._transferTokenTo(token1, sender, claimed1);
+                this.emitEvent(new ClaimRewardEvent(sender, token1, claimed1));
+            } else {
+                this.rewardUserDebt1Map.set(sender, this.rewardAccum1Store.value);
+            }
+        }
+
+        this._unlock();
+
+        const writer: BytesWriter = new BytesWriter(64);
+        writer.writeU256(claimed0);
+        writer.writeU256(claimed1);
+        return writer;
+    }
+
+    // =============================================
     // WRITE METHODS
     // =============================================
 
@@ -446,6 +659,7 @@ export class RevenueVault extends OP_NET {
         this.totalDepositedStore.value = SafeMath.add(currentTotalDeposited, amount);
 
         this.userRevenueDebtMap.set(sender, this.accumulatorStore.value);
+        this._syncRewardDebts(sender);
         this.userLastDepositBlockMap.set(sender, Blockchain.block.numberU256);
 
         this._transferFromSender(sender, amount);
@@ -562,6 +776,7 @@ export class RevenueVault extends OP_NET {
 
         this._checkCooldown(sender);
 
+        // Auto-claim main revenue
         const pending: u256 = this._pendingRevenue(sender);
         if (u256.gt(pending, u256.Zero)) {
             this.userRevenueDebtMap.set(sender, this.accumulatorStore.value);
@@ -573,6 +788,9 @@ export class RevenueVault extends OP_NET {
             this._transferToUser(sender, pending);
             this.emitEvent(new ClaimRevenueEvent(sender, pending));
         }
+
+        // Auto-claim external rewards
+        this._settleExternalRewards(sender);
 
         const amountOut: u256 = SafeMath.div(
             SafeMath.mul(sharesToBurn, currentTotalDeposited),
@@ -587,8 +805,11 @@ export class RevenueVault extends OP_NET {
         const remainingShares: u256 = this.userSharesMap.get(sender);
         if (u256.gt(remainingShares, u256.Zero)) {
             this.userRevenueDebtMap.set(sender, this.accumulatorStore.value);
+            this._syncRewardDebts(sender);
         } else {
             this.userRevenueDebtMap.set(sender, u256.Zero);
+            this.rewardUserDebt0Map.set(sender, u256.Zero);
+            this.rewardUserDebt1Map.set(sender, u256.Zero);
         }
 
         this._transferToUser(sender, amountOut);
@@ -621,9 +842,14 @@ export class RevenueVault extends OP_NET {
             currentTotalShares,
         );
 
+        // Settle external rewards before zeroing shares
+        this._settleExternalRewards(sender);
+
         this.userSharesMap.set(sender, u256.Zero);
         this.userDepositedMap.set(sender, u256.Zero);
         this.userRevenueDebtMap.set(sender, u256.Zero);
+        this.rewardUserDebt0Map.set(sender, u256.Zero);
+        this.rewardUserDebt1Map.set(sender, u256.Zero);
 
         this.totalSharesStore.value = SafeMath.sub(currentTotalShares, currentUserShares);
         this.totalDepositedStore.value = SafeMath.sub(currentTotalDeposited, amountOut);
@@ -823,6 +1049,41 @@ export class RevenueVault extends OP_NET {
     }
 
     // =============================================
+    // EXTERNAL REWARD VIEW METHODS
+    // =============================================
+
+    @method()
+    @returns(
+        { name: 'count', type: ABIDataTypes.UINT256 },
+        { name: 'token0', type: ABIDataTypes.ADDRESS },
+        { name: 'totalDistributed0', type: ABIDataTypes.UINT256 },
+        { name: 'token1', type: ABIDataTypes.ADDRESS },
+        { name: 'totalDistributed1', type: ABIDataTypes.UINT256 },
+    )
+    private getRewardInfo(_calldata: Calldata): BytesWriter {
+        const writer: BytesWriter = new BytesWriter(32 + 32 + 32 + 32 + 32);
+        writer.writeU256(this.rewardTokenCountStore.value);
+        writer.writeAddress(this.rewardToken0Store.value);
+        writer.writeU256(this.rewardTotal0Store.value);
+        writer.writeAddress(this.rewardToken1Store.value);
+        writer.writeU256(this.rewardTotal1Store.value);
+        return writer;
+    }
+
+    @method({ name: 'user', type: ABIDataTypes.ADDRESS })
+    @returns(
+        { name: 'pending0', type: ABIDataTypes.UINT256 },
+        { name: 'pending1', type: ABIDataTypes.UINT256 },
+    )
+    private getUserRewardInfo(calldata: Calldata): BytesWriter {
+        const user: Address = calldata.readAddress();
+        const writer: BytesWriter = new BytesWriter(64);
+        writer.writeU256(this._pendingReward0(user));
+        writer.writeU256(this._pendingReward1(user));
+        return writer;
+    }
+
+    // =============================================
     // INTERNAL HELPERS
     // =============================================
 
@@ -899,6 +1160,96 @@ export class RevenueVault extends OP_NET {
         const result: CallResult = Blockchain.call(token, cd, true);
         if (!result.success) {
             throw new Revert('Token transfer failed');
+        }
+    }
+
+    // --- Generic token transfers (for external reward tokens) ---
+
+    private _transferTokenFrom(token: Address, sender: Address, amount: u256): void {
+        const self: Address = Blockchain.contract.address;
+
+        const cd: BytesWriter = new BytesWriter(100);
+        cd.writeSelector(OP20_TRANSFER_FROM_SELECTOR);
+        cd.writeAddress(sender);
+        cd.writeAddress(self);
+        cd.writeU256(amount);
+
+        const result: CallResult = Blockchain.call(token, cd, true);
+        if (!result.success) {
+            throw new Revert('Reward transferFrom failed');
+        }
+    }
+
+    private _transferTokenTo(token: Address, recipient: Address, amount: u256): void {
+        const cd: BytesWriter = new BytesWriter(68);
+        cd.writeSelector(OP20_TRANSFER_SELECTOR);
+        cd.writeAddress(recipient);
+        cd.writeU256(amount);
+
+        const result: CallResult = Blockchain.call(token, cd, true);
+        if (!result.success) {
+            throw new Revert('Reward transfer failed');
+        }
+    }
+
+    // --- External reward pending calculations ---
+
+    private _pendingReward0(user: Address): u256 {
+        const shares: u256 = this.userSharesMap.get(user);
+        if (u256.eq(shares, u256.Zero)) return u256.Zero;
+
+        const accum: u256 = this.rewardAccum0Store.value;
+        const debt: u256 = this.rewardUserDebt0Map.get(user);
+
+        if (u256.le(accum, debt)) return u256.Zero;
+
+        const diff: u256 = SafeMath.sub(accum, debt);
+        return SafeMath.div(SafeMath.mul(shares, diff), PRECISION);
+    }
+
+    private _pendingReward1(user: Address): u256 {
+        const shares: u256 = this.userSharesMap.get(user);
+        if (u256.eq(shares, u256.Zero)) return u256.Zero;
+
+        const accum: u256 = this.rewardAccum1Store.value;
+        const debt: u256 = this.rewardUserDebt1Map.get(user);
+
+        if (u256.le(accum, debt)) return u256.Zero;
+
+        const diff: u256 = SafeMath.sub(accum, debt);
+        return SafeMath.div(SafeMath.mul(shares, diff), PRECISION);
+    }
+
+    // --- Sync reward debts (on deposit/withdraw) ---
+
+    private _syncRewardDebts(user: Address): void {
+        this.rewardUserDebt0Map.set(user, this.rewardAccum0Store.value);
+        this.rewardUserDebt1Map.set(user, this.rewardAccum1Store.value);
+    }
+
+    // --- Settle external rewards (auto-claim on withdraw/emergency) ---
+
+    private _settleExternalRewards(user: Address): void {
+        const count: u256 = this.rewardTokenCountStore.value;
+
+        if (u256.gt(count, u256.Zero)) {
+            const pending0: u256 = this._pendingReward0(user);
+            if (u256.gt(pending0, u256.Zero)) {
+                const token0: Address = this.rewardToken0Store.value;
+                this._transferTokenTo(token0, user, pending0);
+                this.emitEvent(new ClaimRewardEvent(user, token0, pending0));
+            }
+            this.rewardUserDebt0Map.set(user, this.rewardAccum0Store.value);
+        }
+
+        if (u256.gt(count, u256.One)) {
+            const pending1: u256 = this._pendingReward1(user);
+            if (u256.gt(pending1, u256.Zero)) {
+                const token1: Address = this.rewardToken1Store.value;
+                this._transferTokenTo(token1, user, pending1);
+                this.emitEvent(new ClaimRewardEvent(user, token1, pending1));
+            }
+            this.rewardUserDebt1Map.set(user, this.rewardAccum1Store.value);
         }
     }
 }

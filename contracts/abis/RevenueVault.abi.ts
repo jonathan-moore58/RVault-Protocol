@@ -46,6 +46,30 @@ export const RevenueVaultAbi = [
         type: BitcoinAbiTypes.Function,
     },
     {
+        name: 'addRewardToken',
+        inputs: [{ name: 'token', type: ABIDataTypes.ADDRESS }],
+        outputs: [{ name: 'success', type: ABIDataTypes.BOOL }],
+        type: BitcoinAbiTypes.Function,
+    },
+    {
+        name: 'distributeReward',
+        inputs: [
+            { name: 'token', type: ABIDataTypes.ADDRESS },
+            { name: 'amount', type: ABIDataTypes.UINT256 },
+        ],
+        outputs: [{ name: 'success', type: ABIDataTypes.BOOL }],
+        type: BitcoinAbiTypes.Function,
+    },
+    {
+        name: 'claimAllRewards',
+        inputs: [],
+        outputs: [
+            { name: 'reward0', type: ABIDataTypes.UINT256 },
+            { name: 'reward1', type: ABIDataTypes.UINT256 },
+        ],
+        type: BitcoinAbiTypes.Function,
+    },
+    {
         name: 'deposit',
         inputs: [{ name: 'amount', type: ABIDataTypes.UINT256 }],
         outputs: [{ name: 'success', type: ABIDataTypes.BOOL }],
@@ -147,6 +171,27 @@ export const RevenueVaultAbi = [
             { name: 'feeRecipient', type: ABIDataTypes.ADDRESS },
             { name: 'totalProtocolFees', type: ABIDataTypes.UINT256 },
             { name: 'cooldownBlocks', type: ABIDataTypes.UINT256 },
+        ],
+        type: BitcoinAbiTypes.Function,
+    },
+    {
+        name: 'getRewardInfo',
+        inputs: [],
+        outputs: [
+            { name: 'count', type: ABIDataTypes.UINT256 },
+            { name: 'token0', type: ABIDataTypes.ADDRESS },
+            { name: 'totalDistributed0', type: ABIDataTypes.UINT256 },
+            { name: 'token1', type: ABIDataTypes.ADDRESS },
+            { name: 'totalDistributed1', type: ABIDataTypes.UINT256 },
+        ],
+        type: BitcoinAbiTypes.Function,
+    },
+    {
+        name: 'getUserRewardInfo',
+        inputs: [{ name: 'user', type: ABIDataTypes.ADDRESS }],
+        outputs: [
+            { name: 'pending0', type: ABIDataTypes.UINT256 },
+            { name: 'pending1', type: ABIDataTypes.UINT256 },
         ],
         type: BitcoinAbiTypes.Function,
     },

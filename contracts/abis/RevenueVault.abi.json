@@ -117,6 +117,63 @@
             ]
         },
         {
+            "name": "addRewardToken",
+            "type": "Function",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [
+                {
+                    "name": "token",
+                    "type": "ADDRESS"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "success",
+                    "type": "BOOL"
+                }
+            ]
+        },
+        {
+            "name": "distributeReward",
+            "type": "Function",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [
+                {
+                    "name": "token",
+                    "type": "ADDRESS"
+                },
+                {
+                    "name": "amount",
+                    "type": "UINT256"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "success",
+                    "type": "BOOL"
+                }
+            ]
+        },
+        {
+            "name": "claimAllRewards",
+            "type": "Function",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "reward0",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "reward1",
+                    "type": "UINT256"
+                }
+            ]
+        },
+        {
             "name": "deposit",
             "type": "Function",
             "payable": false,
@@ -373,6 +430,57 @@
                 },
                 {
                     "name": "cooldownBlocks",
+                    "type": "UINT256"
+                }
+            ]
+        },
+        {
+            "name": "getRewardInfo",
+            "type": "Function",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "count",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "token0",
+                    "type": "ADDRESS"
+                },
+                {
+                    "name": "totalDistributed0",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "token1",
+                    "type": "ADDRESS"
+                },
+                {
+                    "name": "totalDistributed1",
+                    "type": "UINT256"
+                }
+            ]
+        },
+        {
+            "name": "getUserRewardInfo",
+            "type": "Function",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [
+                {
+                    "name": "user",
+                    "type": "ADDRESS"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "pending0",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "pending1",
                     "type": "UINT256"
                 }
             ]

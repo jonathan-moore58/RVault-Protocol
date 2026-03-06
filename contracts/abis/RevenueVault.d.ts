@@ -80,6 +80,37 @@ export type SetDepositToken = CallResult<
 >;
 
 /**
+ * @description Represents the result of the addRewardToken function call.
+ */
+export type AddRewardToken = CallResult<
+    {
+        success: boolean;
+    },
+    OPNetEvent<never>[]
+>;
+
+/**
+ * @description Represents the result of the distributeReward function call.
+ */
+export type DistributeReward = CallResult<
+    {
+        success: boolean;
+    },
+    OPNetEvent<never>[]
+>;
+
+/**
+ * @description Represents the result of the claimAllRewards function call.
+ */
+export type ClaimAllRewards = CallResult<
+    {
+        reward0: bigint;
+        reward1: bigint;
+    },
+    OPNetEvent<never>[]
+>;
+
+/**
  * @description Represents the result of the deposit function call.
  */
 export type Deposit = CallResult<
@@ -238,6 +269,31 @@ export type GetProtocolInfo = CallResult<
     OPNetEvent<never>[]
 >;
 
+/**
+ * @description Represents the result of the getRewardInfo function call.
+ */
+export type GetRewardInfo = CallResult<
+    {
+        count: bigint;
+        token0: Address;
+        totalDistributed0: bigint;
+        token1: Address;
+        totalDistributed1: bigint;
+    },
+    OPNetEvent<never>[]
+>;
+
+/**
+ * @description Represents the result of the getUserRewardInfo function call.
+ */
+export type GetUserRewardInfo = CallResult<
+    {
+        pending0: bigint;
+        pending1: bigint;
+    },
+    OPNetEvent<never>[]
+>;
+
 // ------------------------------------------------------------------
 // IRevenueVault
 // ------------------------------------------------------------------
@@ -249,6 +305,9 @@ export interface IRevenueVault extends IOP_NETContract {
     setProtocolFeeRecipient(recipient: Address): Promise<SetProtocolFeeRecipient>;
     setCooldownBlocks(blocks: bigint): Promise<SetCooldownBlocks>;
     setDepositToken(token: Address): Promise<SetDepositToken>;
+    addRewardToken(token: Address): Promise<AddRewardToken>;
+    distributeReward(token: Address, amount: bigint): Promise<DistributeReward>;
+    claimAllRewards(): Promise<ClaimAllRewards>;
     deposit(amount: bigint): Promise<Deposit>;
     collectFees(amount: bigint): Promise<CollectFees>;
     claimRevenue(): Promise<ClaimRevenue>;
@@ -264,4 +323,6 @@ export interface IRevenueVault extends IOP_NETContract {
     getMinimumDeposit(): Promise<GetMinimumDeposit>;
     getDepositToken(): Promise<GetDepositToken>;
     getProtocolInfo(): Promise<GetProtocolInfo>;
+    getRewardInfo(): Promise<GetRewardInfo>;
+    getUserRewardInfo(user: Address): Promise<GetUserRewardInfo>;
 }
