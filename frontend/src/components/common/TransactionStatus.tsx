@@ -15,9 +15,10 @@ const statusConfig = {
     error: { gradient: 'from-red-500/5 to-transparent', border: 'rgba(239,68,68,0.15)', icon: 'x', label: 'Transaction failed', accent: '#ef4444' },
 };
 
-function formatCountdown(secs: number): string {
+function formatCountdown(rawSecs: number): string {
+    const secs = Math.min(rawSecs, 600); // cap at 10 min
     const m = Math.floor(secs / 60);
-    const s = secs % 60;
+    const s = Math.floor(secs % 60);
     if (m > 0) return `~${m}m ${s}s`;
     return `~${s}s`;
 }

@@ -25,6 +25,12 @@ async function pollConfirmation(provider: AbstractRpcProvider, txId: string): Pr
     throw new Error('Transaction confirmation timed out');
 }
 
+/** Normalize block timestamp — OPNet may return ms or seconds */
+function toSecs(t: number | bigint): number {
+    const n = typeof t === 'bigint' ? Number(t) : t;
+    return n > 1e12 ? Math.floor(n / 1000) : n;
+}
+
 async function estimateBlockWait(provider: AbstractRpcProvider): Promise<number> {
     try {
         const blockNum = await provider.getBlockNumber();
@@ -32,11 +38,13 @@ async function estimateBlockWait(provider: AbstractRpcProvider): Promise<number>
             provider.getBlock(blockNum),
             provider.getBlock(blockNum - 1n),
         ]);
-        // Use actual gap between last 2 blocks as estimate, capped to reasonable range
-        const actualGap = current.time - previous.time;
+        const curTime = toSecs(current.time);
+        const prevTime = toSecs(previous.time);
+        const actualGap = curTime - prevTime;
         const avgBlockTime = Math.max(30, Math.min(actualGap, AVG_BLOCK_TIME_SECS));
-        const elapsed = Math.floor(Date.now() / 1000) - current.time;
-        return Math.max(10, avgBlockTime - elapsed);
+        const nowSecs = Math.floor(Date.now() / 1000);
+        const elapsed = nowSecs - curTime;
+        return Math.min(AVG_BLOCK_TIME_SECS, Math.max(10, avgBlockTime - elapsed));
     } catch {
         return AVG_BLOCK_TIME_SECS; // fallback
     }
