@@ -25,7 +25,9 @@ export function formatAddress(address: string): string {
 export function parseTokenAmount(value: string, decimals: number = DECIMALS): bigint {
     if (!value || value === '0') return 0n;
 
-    const parts = value.split('.');
+    // Strip locale commas/spaces so "344,047" or "1 000" still parse
+    const clean = value.replace(/[,\s]/g, '');
+    const parts = clean.split('.');
     const whole = BigInt(parts[0] || '0');
     let fraction = 0n;
 
