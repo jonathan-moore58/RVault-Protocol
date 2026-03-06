@@ -17,6 +17,7 @@ export function useVaultData() {
     const [protocolInfo, setProtocolInfo] = useState<ProtocolInfo | null>(null);
     const [tokenBalance, setTokenBalance] = useState<bigint>(0n);
     const [loading, setLoading] = useState(true);
+    const [tokenMismatch, setTokenMismatch] = useState(false);
 
     // Token symbol comes from the vault registry — no on-chain call needed
     const activeTokenSymbol = selectedVault?.symbol ?? 'TOKEN';
@@ -35,6 +36,36 @@ export function useVaultData() {
                     totalFees: (p.totalFees as bigint) ?? 0n,
                     accumulator: (p.accumulator as bigint) ?? 0n,
                 });
+            }
+
+            // Validate on-chain deposit token matches frontend config
+            try {
+                const tokenResult = await contracts.vault.getDepositToken();
+                if (!tokenResult.revert && selectedVault) {
+                    const onChainToken = String(tokenResult.properties.depositToken ?? '').toLowerCase();
+                    const configToken = selectedVault.depositToken.toLowerCase();
+                    // On-chain returns Address object — compare hex strings
+                    const mismatch = onChainToken.length > 2 &&
+                        !onChainToken.includes('000000000000000000000000000000') &&
+                        onChainToken !== configToken &&
+                        !configToken.includes(onChainToken.replace('0x', '')) &&
+                        !onChainToken.includes(configToken.replace('0x', ''));
+                    if (mismatch) {
+                        console.error(
+                            `[RVault] TOKEN MISMATCH — on-chain: ${onChainToken}, config: ${configToken}`,
+                        );
+                    }
+                    // If on-chain token is zero address, setDepositToken was never called
+                    const isZero = onChainToken.replace(/0x/i, '').replace(/0/g, '') === '';
+                    if (isZero) {
+                        console.error(
+                            '[RVault] DEPOSIT TOKEN NOT SET — setDepositToken() must be called on this vault',
+                        );
+                    }
+                    setTokenMismatch(mismatch || isZero);
+                }
+            } catch {
+                // getDepositToken may not be available on older contracts
             }
 
             // Fetch protocol info
@@ -103,7 +134,7 @@ export function useVaultData() {
 
     return {
         vaultInfo, userInfo, protocolInfo, tokenBalance,
-        activeTokenSymbol,
+        activeTokenSymbol, tokenMismatch,
         loading, refetch: fetchData,
     };
 }

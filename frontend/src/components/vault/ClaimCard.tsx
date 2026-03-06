@@ -1,6 +1,9 @@
 import { motion } from 'framer-motion';
+import { useWalletConnect } from '@btc-vision/walletconnect';
 import { useVaultContract } from '../../hooks/useVaultContract';
 import { useTransaction } from '../../hooks/useTransaction';
+import { providerService } from '../../services/ProviderService';
+import { getNetworkConfig, DEFAULT_NETWORK } from '../../config/networks';
 import { TransactionStatus } from '../common/TransactionStatus';
 import { AnimatedNumber } from '../common/AnimatedNumber';
 import { formatTokenAmount } from '../../utils/formatting';
@@ -13,6 +16,7 @@ interface ClaimCardProps {
 }
 
 export function ClaimCard({ userInfo, onSuccess, tokenSymbol = 'TOKEN' }: ClaimCardProps) {
+    const { provider, network } = useWalletConnect();
     const contracts = useVaultContract();
     const claimTx = useTransaction();
     const compoundTx = useTransaction();
@@ -23,9 +27,16 @@ export function ClaimCard({ userInfo, onSuccess, tokenSymbol = 'TOKEN' }: ClaimC
     async function handleClaim() {
         if (!contracts || !hasPending) return;
 
-        const txId = await claimTx.execute(async () => {
-            return await contracts.vault.claimRevenue();
-        });
+        const activeProvider = provider ?? providerService.getProvider(
+            network ?? getNetworkConfig(DEFAULT_NETWORK).network,
+        );
+
+        const txId = await claimTx.execute(
+            async () => {
+                return await contracts.vault.claimRevenue();
+            },
+            { waitForConfirmation: activeProvider },
+        );
 
         if (txId) {
             setTimeout(onSuccess, 2000);
@@ -35,9 +46,16 @@ export function ClaimCard({ userInfo, onSuccess, tokenSymbol = 'TOKEN' }: ClaimC
     async function handleCompound() {
         if (!contracts || !hasPending) return;
 
-        const txId = await compoundTx.execute(async () => {
-            return await contracts.vault.autoCompound();
-        });
+        const activeProvider = provider ?? providerService.getProvider(
+            network ?? getNetworkConfig(DEFAULT_NETWORK).network,
+        );
+
+        const txId = await compoundTx.execute(
+            async () => {
+                return await contracts.vault.autoCompound();
+            },
+            { waitForConfirmation: activeProvider },
+        );
 
         if (txId) {
             setTimeout(onSuccess, 2000);
@@ -45,8 +63,8 @@ export function ClaimCard({ userInfo, onSuccess, tokenSymbol = 'TOKEN' }: ClaimC
     }
 
     const isProcessing =
-        claimTx.state.status === 'simulating' || claimTx.state.status === 'pending' ||
-        compoundTx.state.status === 'simulating' || compoundTx.state.status === 'pending';
+        claimTx.state.status === 'simulating' || claimTx.state.status === 'pending' || claimTx.state.status === 'confirming' ||
+        compoundTx.state.status === 'simulating' || compoundTx.state.status === 'pending' || compoundTx.state.status === 'confirming';
 
     return (
         <div className="gradient-border relative overflow-hidden rounded-2xl p-6">

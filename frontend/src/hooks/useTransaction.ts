@@ -11,14 +11,24 @@ const AVG_BLOCK_TIME_SECS = 600; // Bitcoin ~10 min
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySimulation = { revert?: string; sendTransaction: (...args: any[]) => Promise<{ transactionId: string }> };
 
+const REVERT_TAG = '[ON_CHAIN_REVERT]';
+
 async function pollConfirmation(provider: AbstractRpcProvider, txId: string): Promise<void> {
     const deadline = Date.now() + CONFIRM_TIMEOUT_MS;
     while (Date.now() < deadline) {
         try {
-            await provider.getTransaction(txId);
-            return; // tx found in a block
-        } catch {
-            // not yet confirmed — wait and retry
+            const receipt = await provider.getTransactionReceipt(txId);
+            // Receipt found — tx is in a block. Check for on-chain revert.
+            if (receipt.failed) {
+                throw new Error(`${REVERT_TAG} ${receipt.revert ?? 'Transaction reverted on-chain'}`);
+            }
+            return; // tx confirmed AND executed successfully
+        } catch (err) {
+            // If it's our own revert error, rethrow immediately
+            if (err instanceof Error && err.message.startsWith(REVERT_TAG)) {
+                throw new Error(err.message.slice(REVERT_TAG.length + 1));
+            }
+            // Not yet confirmed — wait and retry
             await new Promise((r) => setTimeout(r, CONFIRM_POLL_MS));
         }
     }
@@ -53,6 +63,13 @@ async function estimateBlockWait(provider: AbstractRpcProvider): Promise<number>
 interface ExecuteOptions {
     /** If provided, poll the provider until tx is confirmed on-chain */
     waitForConfirmation?: AbstractRpcProvider;
+    /**
+     * Skip simulation revert check and broadcast anyway.
+     * Used when a prior tx (e.g. approve) is in the mempool but not yet confirmed —
+     * the simulation sees old state and reverts, but on-chain both txs land in the
+     * same block and execute in order. MotoSwap pattern.
+     */
+    ignoreRevert?: boolean;
 }
 
 export function useTransaction() {
@@ -74,7 +91,7 @@ export function useTransaction() {
             try {
                 const simulation = await simulateFn();
 
-                if (simulation.revert) {
+                if (simulation.revert && !options?.ignoreRevert) {
                     setState({ status: 'error', error: simulation.revert });
                     return null;
                 }

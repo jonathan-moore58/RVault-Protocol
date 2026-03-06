@@ -4,6 +4,8 @@ import { useWalletConnect } from '@btc-vision/walletconnect';
 import { useVaultData } from '../hooks/useVaultData';
 import { useVaultContract } from '../hooks/useVaultContract';
 import { useTransaction } from '../hooks/useTransaction';
+import { providerService } from '../services/ProviderService';
+import { getNetworkConfig, DEFAULT_NETWORK } from '../config/networks';
 import { WithdrawForm } from '../components/vault/WithdrawForm';
 import { VaultStats } from '../components/vault/VaultStats';
 import { TransactionStatus } from '../components/common/TransactionStatus';
@@ -15,7 +17,7 @@ const pageVariants = {
 };
 
 export function Withdraw() {
-    const { walletAddress, openConnectModal } = useWalletConnect();
+    const { walletAddress, openConnectModal, provider, network } = useWalletConnect();
     const { vaultInfo, userInfo, protocolInfo, activeTokenSymbol, loading, refetch } = useVaultData();
     const contracts = useVaultContract();
     const emergencyTx = useTransaction();
@@ -24,9 +26,16 @@ export function Withdraw() {
     async function handleEmergencyWithdraw() {
         if (!contracts) return;
 
-        const txId = await emergencyTx.execute(async () => {
-            return await contracts.vault.emergencyWithdraw();
-        });
+        const activeProvider = provider ?? providerService.getProvider(
+            network ?? getNetworkConfig(DEFAULT_NETWORK).network,
+        );
+
+        const txId = await emergencyTx.execute(
+            async () => {
+                return await contracts.vault.emergencyWithdraw();
+            },
+            { waitForConfirmation: activeProvider },
+        );
 
         if (txId) {
             setTimeout(() => void refetch(), 2000);

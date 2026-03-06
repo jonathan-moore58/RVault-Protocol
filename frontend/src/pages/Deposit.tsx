@@ -15,7 +15,7 @@ const pageVariants = {
 export function Deposit() {
     const { walletAddress, openConnectModal } = useWalletConnect();
     const contracts = useVaultContract();
-    const { vaultInfo, protocolInfo, tokenBalance, activeTokenSymbol, loading, refetch } = useVaultData();
+    const { vaultInfo, protocolInfo, tokenBalance, activeTokenSymbol, tokenMismatch, loading, refetch } = useVaultData();
     const [isPaused, setIsPaused] = useState(false);
 
     useEffect(() => {
@@ -56,6 +56,23 @@ export function Deposit() {
                         </svg>
                         <span className="text-sm font-semibold text-red-400">Vault is Paused</span>
                         <span className="text-[12px] text-gray-500">— Deposits are currently disabled</span>
+                    </div>
+                </motion.div>
+            )}
+
+            {tokenMismatch && (
+                <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="rounded-xl px-4 py-3"
+                    style={{ background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.15)' }}
+                >
+                    <div className="flex items-center gap-2.5">
+                        <svg className="h-4 w-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                        </svg>
+                        <span className="text-sm font-semibold text-amber-400">Token Not Configured</span>
+                        <span className="text-[12px] text-gray-500">— Owner must call setDepositToken() before deposits work</span>
                     </div>
                 </motion.div>
             )}

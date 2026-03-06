@@ -121,7 +121,7 @@ export function TransactionStatus({ state, onReset }: TransactionStatusProps) {
                         <p className="text-sm font-medium text-gray-200">{config.label}</p>
                         {state.txId && (
                             <a
-                                href={`https://opscan.org/transactions/${state.txId}?network=testnet`}
+                                href={`https://opscan.org/transactions/${state.txId}?network=op_testnet`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="group mt-0.5 flex items-center gap-1 truncate font-mono text-[11px] text-gray-500 hover:text-[#00ffaa] transition-colors"

@@ -15,13 +15,13 @@ interface DepositFormProps {
 }
 
 export function DepositForm({ onSuccess, tokenBalance = 0n, tokenSymbol = 'TOKEN' }: DepositFormProps) {
-    const { walletAddress, provider, network } = useWalletConnect();
+    const { walletAddress, address: userAddress, provider, network } = useWalletConnect();
     const contracts = useVaultContract();
     const approveTx = useTransaction();
     const depositTx = useTransaction();
 
     const [amount, setAmount] = useState('');
-    const [step, setStep] = useState<'input' | 'approve' | 'confirming' | 'deposit'>('input');
+    const [step, setStep] = useState<'input' | 'approving' | 'depositing'>('input');
 
     const parsedAmount = parseTokenAmount(amount);
     const isValidAmount = parsedAmount > 0n;
@@ -33,38 +33,60 @@ export function DepositForm({ onSuccess, tokenBalance = 0n, tokenSymbol = 'TOKEN
         void onAmountChange(formatted);
     }
 
-    async function handleApprove() {
-        if (!contracts || !isValidAmount || !walletAddress) return;
-        setStep('approve');
+    /**
+     * Single-click deposit: approve + deposit back-to-back (MotoSwap pattern).
+     * Both txs land in the same block — approve runs first, then deposit uses the allowance.
+     * Only the deposit tx waits for on-chain confirmation.
+     */
+    async function handleDeposit() {
+        if (!contracts || !isValidAmount || !walletAddress || !userAddress) return;
 
         const activeProvider = provider ?? providerService.getProvider(
             network ?? getNetworkConfig(DEFAULT_NETWORK).network,
         );
+        const vaultAddr = await contracts.vault.contractAddress;
 
-        const txId = await approveTx.execute(
-            async () => {
-                const vaultAddr = await contracts.vault.contractAddress;
+        // Check if we need approval
+        let needsApproval = true;
+        try {
+            const allowanceResult = await contracts.token.allowance(userAddress, vaultAddr);
+            if (!allowanceResult.revert) {
+                const current = (allowanceResult.properties.remaining as bigint) ?? 0n;
+                needsApproval = current < parsedAmount;
+            }
+        } catch {
+            // If allowance check fails, approve to be safe
+        }
+
+        if (needsApproval) {
+            // Step 1: Approve — broadcast only, don't wait for confirmation
+            setStep('approving');
+            const approveTxId = await approveTx.execute(async () => {
                 return await contracts.token.increaseAllowance(vaultAddr, parsedAmount);
+            });
+
+            if (!approveTxId) return; // approve simulation failed
+        }
+
+        // Step 2: Deposit — ignoreRevert because the approve is in mempool (simulation
+        // sees old state), but on-chain both txs land in the same block.
+        setStep('depositing');
+        const depositTxId = await depositTx.execute(
+            async () => {
+                return await contracts.vault.deposit(parsedAmount);
             },
-            { waitForConfirmation: activeProvider },
+            {
+                waitForConfirmation: activeProvider,
+                ignoreRevert: needsApproval, // only skip revert check if we just approved
+            },
         );
 
-        if (txId) {
-            setStep('deposit');
-        }
-    }
-
-    async function handleDeposit() {
-        if (!contracts || !isValidAmount) return;
-
-        const txId = await depositTx.execute(async () => {
-            return await contracts.vault.deposit(parsedAmount);
-        });
-
-        if (txId) {
+        if (depositTxId) {
             setAmount('');
             setStep('input');
             setTimeout(onSuccess, 2000);
+        } else {
+            setStep('input');
         }
     }
 
@@ -96,9 +118,9 @@ export function DepositForm({ onSuccess, tokenBalance = 0n, tokenSymbol = 'TOKEN
     const isProcessing =
         approveTx.state.status === 'simulating' ||
         approveTx.state.status === 'pending' ||
-        approveTx.state.status === 'confirming' ||
         depositTx.state.status === 'simulating' ||
-        depositTx.state.status === 'pending';
+        depositTx.state.status === 'pending' ||
+        depositTx.state.status === 'confirming';
 
     return (
         <div className="gradient-border relative overflow-hidden rounded-2xl p-8">
@@ -116,7 +138,7 @@ export function DepositForm({ onSuccess, tokenBalance = 0n, tokenSymbol = 'TOKEN
                     </div>
                     <div>
                         <h2 className="text-lg font-bold text-white">Deposit</h2>
-                        <p className="text-[12px] text-gray-500">Approve → deposit → receive vault shares</p>
+                        <p className="text-[12px] text-gray-500">Deposit tokens → receive vault shares</p>
                     </div>
                 </div>
 
@@ -185,75 +207,63 @@ export function DepositForm({ onSuccess, tokenBalance = 0n, tokenSymbol = 'TOKEN
                 </div>
 
                 {/* Step indicator */}
-                <div className="mt-8 flex items-center gap-4">
-                    <div className="flex items-center gap-2.5">
-                        <div className={`flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold transition-all duration-300 ${
-                            step === 'deposit'
-                                ? 'bg-[#00ffaa]/15 text-[#00ffaa]'
-                                : step === 'approve' || step === 'confirming'
-                                  ? 'bg-[#00ffaa]/15 text-[#00ffaa]'
-                                  : 'bg-white/5 text-gray-600'
-                        }`}>
-                            {step === 'deposit' ? (
-                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                </svg>
-                            ) : '1'}
+                {step !== 'input' && (
+                    <div className="mt-8 flex items-center gap-4">
+                        <div className="flex items-center gap-2.5">
+                            <div className={`flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold transition-all duration-300 ${
+                                step === 'depositing' || approveTx.state.status === 'success'
+                                    ? 'bg-[#00ffaa]/15 text-[#00ffaa]'
+                                    : step === 'approving'
+                                      ? 'bg-[#00ffaa]/15 text-[#00ffaa]'
+                                      : 'bg-white/5 text-gray-600'
+                            }`}>
+                                {step === 'depositing' || approveTx.state.status === 'success' ? (
+                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                ) : '1'}
+                            </div>
+                            <span className="text-xs font-medium text-gray-300">Approve</span>
                         </div>
-                        <span className={`text-xs font-medium ${step !== 'input' ? 'text-gray-300' : 'text-gray-600'}`}>Approve</span>
-                    </div>
 
-                    <div className="h-px flex-1" style={{
-                        background: step === 'deposit'
-                            ? 'linear-gradient(90deg, #00ffaa40, #00e5ff40)'
-                            : step === 'confirming'
-                              ? 'linear-gradient(90deg, #00ffaa20, #00e5ff20)'
-                              : 'rgba(255,255,255,0.05)',
-                        transition: 'background 0.5s ease',
-                    }} />
+                        <div className="h-px flex-1" style={{
+                            background: step === 'depositing'
+                                ? 'linear-gradient(90deg, #00ffaa40, #00e5ff40)'
+                                : 'rgba(255,255,255,0.05)',
+                            transition: 'background 0.5s ease',
+                        }} />
 
-                    <div className="flex items-center gap-2.5">
-                        <div className={`flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold transition-all duration-300 ${
-                            step === 'deposit' ? 'bg-[#00e5ff]/15 text-[#00e5ff]' : 'bg-white/5 text-gray-600'
-                        }`}>
-                            2
+                        <div className="flex items-center gap-2.5">
+                            <div className={`flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold transition-all duration-300 ${
+                                step === 'depositing' ? 'bg-[#00e5ff]/15 text-[#00e5ff]' : 'bg-white/5 text-gray-600'
+                            }`}>
+                                2
+                            </div>
+                            <span className={`text-xs font-medium ${step === 'depositing' ? 'text-gray-300' : 'text-gray-600'}`}>Deposit</span>
                         </div>
-                        <span className={`text-xs font-medium ${step === 'deposit' ? 'text-gray-300' : 'text-gray-600'}`}>Deposit</span>
                     </div>
+                )}
+
+                {/* Single deposit button */}
+                <div className={step === 'input' ? 'mt-8' : 'mt-6'}>
+                    <motion.button
+                        whileHover={{ scale: 1.005 }}
+                        whileTap={{ scale: 0.995 }}
+                        onClick={handleDeposit}
+                        disabled={!isValidAmount || !walletAddress || isProcessing || exceedsBalance}
+                        className="btn-neon w-full rounded-xl py-4 text-sm"
+                    >
+                        {depositTx.state.status === 'confirming'
+                            ? 'Confirming on-chain...'
+                            : depositTx.state.status === 'simulating' || depositTx.state.status === 'pending'
+                              ? 'Depositing...'
+                              : approveTx.state.status === 'simulating' || approveTx.state.status === 'pending'
+                                ? 'Approving...'
+                                : 'Deposit'}
+                    </motion.button>
                 </div>
 
-                {/* Button */}
-                <div className="mt-6">
-                    {step === 'deposit' ? (
-                        <motion.button
-                            whileHover={{ scale: 1.005 }}
-                            whileTap={{ scale: 0.995 }}
-                            onClick={handleDeposit}
-                            disabled={isProcessing}
-                            className="btn-neon w-full rounded-xl py-4 text-sm"
-                        >
-                            {depositTx.state.status === 'simulating' || depositTx.state.status === 'pending'
-                                ? 'Depositing...'
-                                : 'Deposit Tokens'}
-                        </motion.button>
-                    ) : (
-                        <motion.button
-                            whileHover={{ scale: 1.005 }}
-                            whileTap={{ scale: 0.995 }}
-                            onClick={handleApprove}
-                            disabled={!isValidAmount || !walletAddress || isProcessing || exceedsBalance}
-                            className="btn-ghost w-full rounded-xl py-4 text-sm font-semibold"
-                        >
-                            {approveTx.state.status === 'confirming'
-                                ? 'Confirming on-chain...'
-                                : approveTx.state.status === 'simulating' || approveTx.state.status === 'pending'
-                                  ? 'Approving...'
-                                  : 'Approve Tokens'}
-                        </motion.button>
-                    )}
-                </div>
-
-                {approveTx.state.status !== 'idle' && (step === 'approve' || step === 'confirming') && (
+                {approveTx.state.status !== 'idle' && step === 'approving' && (
                     <TransactionStatus state={approveTx.state} onReset={approveTx.reset} />
                 )}
                 {depositTx.state.status !== 'idle' && (

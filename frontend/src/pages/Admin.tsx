@@ -77,14 +77,23 @@ export function Admin() {
         void fetchAdminData();
     }, [fetchAdminData]);
 
+    function getActiveProvider() {
+        return provider ?? providerService.getProvider(
+            network ?? getNetworkConfig(DEFAULT_NETWORK).network,
+        );
+    }
+
     async function handlePauseToggle() {
         if (!contracts) return;
 
-        const txId = await pauseTx.execute(async () => {
-            return isPaused
-                ? await contracts.vault.unpause()
-                : await contracts.vault.pause();
-        });
+        const txId = await pauseTx.execute(
+            async () => {
+                return isPaused
+                    ? await contracts.vault.unpause()
+                    : await contracts.vault.pause();
+            },
+            { waitForConfirmation: getActiveProvider() },
+        );
 
         if (txId) {
             setTimeout(() => {
@@ -99,9 +108,12 @@ export function Admin() {
         const parsed = parseTokenAmount(minDeposit);
         if (parsed <= 0n) return;
 
-        const txId = await minDepositTx.execute(async () => {
-            return await contracts.vault.setMinimumDeposit(parsed);
-        });
+        const txId = await minDepositTx.execute(
+            async () => {
+                return await contracts.vault.setMinimumDeposit(parsed);
+            },
+            { waitForConfirmation: getActiveProvider() },
+        );
 
         if (txId) {
             setMinDeposit('');
@@ -109,35 +121,45 @@ export function Admin() {
         }
     }
 
-    async function handleApproveFees() {
-        if (!contracts) return;
-        const parsed = parseTokenAmount(feeAmount);
-        if (parsed <= 0n) return;
-        setFeesStep('approve');
-
-        const activeProvider = provider ?? providerService.getProvider(
-            network ?? getNetworkConfig(DEFAULT_NETWORK).network,
-        );
-
-        const txId = await approveFeesTx.execute(
-            async () => {
-                const vaultAddr = await contracts.vault.contractAddress;
-                return await contracts.token.increaseAllowance(vaultAddr, parsed);
-            },
-            { waitForConfirmation: activeProvider },
-        );
-
-        if (txId) setFeesStep('send');
-    }
-
+    /**
+     * Single-click collect fees: approve + collectFees back-to-back.
+     * Both txs land in same block. Only collectFees waits for confirmation.
+     */
     async function handleCollectFees() {
-        if (!contracts) return;
+        if (!contracts || !userAddress) return;
         const parsed = parseTokenAmount(feeAmount);
         if (parsed <= 0n) return;
 
-        const txId = await collectFeesTx.execute(async () => {
-            return await contracts.vault.collectFees(parsed);
-        });
+        const vaultAddr = await contracts.vault.contractAddress;
+
+        // Check if we need approval
+        let needsApproval = true;
+        try {
+            const allowanceResult = await contracts.token.allowance(userAddress, vaultAddr);
+            if (!allowanceResult.revert) {
+                const current = (allowanceResult.properties.remaining as bigint) ?? 0n;
+                needsApproval = current < parsed;
+            }
+        } catch { /* approve to be safe */ }
+
+        if (needsApproval) {
+            setFeesStep('approve');
+            const approveTxId = await approveFeesTx.execute(async () => {
+                return await contracts.token.increaseAllowance(vaultAddr, parsed);
+            });
+            if (!approveTxId) return;
+        }
+
+        setFeesStep('send');
+        const txId = await collectFeesTx.execute(
+            async () => {
+                return await contracts.vault.collectFees(parsed);
+            },
+            {
+                waitForConfirmation: getActiveProvider(),
+                ignoreRevert: needsApproval,
+            },
+        );
 
         if (txId) {
             setFeeAmount('');
@@ -150,9 +172,12 @@ export function Admin() {
     async function handleSetDepositToken() {
         if (!contracts || !isValidHexAddress(depositTokenInput)) return;
 
-        const txId = await setTokenTx.execute(async () => {
-            return await contracts.vault.setDepositToken(Address.fromString(depositTokenInput.trim()));
-        });
+        const txId = await setTokenTx.execute(
+            async () => {
+                return await contracts.vault.setDepositToken(Address.fromString(depositTokenInput.trim()));
+            },
+            { waitForConfirmation: getActiveProvider() },
+        );
 
         if (txId) {
             setDepositTokenInput('');
@@ -164,9 +189,12 @@ export function Admin() {
         const bps = BigInt(Math.round(Number(protocolFeeBps)));
         if (bps < 0n || bps > 2000n) return;
 
-        const txId = await setFeeTx.execute(async () => {
-            return await contracts.vault.setProtocolFee(bps);
-        });
+        const txId = await setFeeTx.execute(
+            async () => {
+                return await contracts.vault.setProtocolFee(bps);
+            },
+            { waitForConfirmation: getActiveProvider() },
+        );
 
         if (txId) {
             setProtocolFeeBps('');
@@ -177,11 +205,14 @@ export function Admin() {
     async function handleSetFeeRecipient() {
         if (!contracts || !isValidHexAddress(feeRecipientInput)) return;
 
-        const txId = await setRecipientTx.execute(async () => {
-            return await contracts.vault.setProtocolFeeRecipient(
-                Address.fromString(feeRecipientInput.trim()),
-            );
-        });
+        const txId = await setRecipientTx.execute(
+            async () => {
+                return await contracts.vault.setProtocolFeeRecipient(
+                    Address.fromString(feeRecipientInput.trim()),
+                );
+            },
+            { waitForConfirmation: getActiveProvider() },
+        );
 
         if (txId) {
             setFeeRecipientInput('');
@@ -194,9 +225,12 @@ export function Admin() {
         const blocks = BigInt(Math.round(Number(cooldownBlocksInput)));
         if (blocks < 0n) return;
 
-        const txId = await setCooldownTx.execute(async () => {
-            return await contracts.vault.setCooldownBlocks(blocks);
-        });
+        const txId = await setCooldownTx.execute(
+            async () => {
+                return await contracts.vault.setCooldownBlocks(blocks);
+            },
+            { waitForConfirmation: getActiveProvider() },
+        );
 
         if (txId) {
             setCooldownBlocksInput('');
@@ -625,36 +659,27 @@ export function Admin() {
                                         {activeTokenSymbol}
                                     </div>
                                 </div>
-                                {feesStep === 'send' ? (
-                                    <motion.button
-                                        whileHover={{ scale: 1.01 }}
-                                        whileTap={{ scale: 0.98 }}
-                                        onClick={handleCollectFees}
-                                        disabled={collectFeesTx.state.status === 'simulating' || collectFeesTx.state.status === 'pending'}
-                                        className="btn-neon whitespace-nowrap rounded-xl px-8 py-4 text-sm"
-                                    >
-                                        {collectFeesTx.state.status === 'simulating' || collectFeesTx.state.status === 'pending'
-                                            ? 'Sending...'
-                                            : 'Send Revenue'}
-                                    </motion.button>
-                                ) : (
-                                    <motion.button
-                                        whileHover={{ scale: 1.01 }}
-                                        whileTap={{ scale: 0.98 }}
-                                        onClick={handleApproveFees}
-                                        disabled={!parseTokenAmount(feeAmount) || approveFeesTx.state.status === 'simulating' || approveFeesTx.state.status === 'pending' || approveFeesTx.state.status === 'confirming'}
-                                        className="btn-ghost whitespace-nowrap rounded-xl px-8 py-4 text-sm font-semibold"
-                                    >
-                                        {approveFeesTx.state.status === 'confirming'
-                                            ? 'Confirming...'
-                                            : approveFeesTx.state.status === 'simulating' || approveFeesTx.state.status === 'pending'
-                                              ? 'Approving...'
-                                              : 'Approve'}
-                                    </motion.button>
-                                )}
+                                <motion.button
+                                    whileHover={{ scale: 1.01 }}
+                                    whileTap={{ scale: 0.98 }}
+                                    onClick={handleCollectFees}
+                                    disabled={!parseTokenAmount(feeAmount) ||
+                                        approveFeesTx.state.status === 'simulating' || approveFeesTx.state.status === 'pending' ||
+                                        collectFeesTx.state.status === 'simulating' || collectFeesTx.state.status === 'pending' ||
+                                        collectFeesTx.state.status === 'confirming'}
+                                    className="btn-neon whitespace-nowrap rounded-xl px-8 py-4 text-sm"
+                                >
+                                    {collectFeesTx.state.status === 'confirming'
+                                        ? 'Confirming...'
+                                        : collectFeesTx.state.status === 'simulating' || collectFeesTx.state.status === 'pending'
+                                          ? 'Sending...'
+                                          : approveFeesTx.state.status === 'simulating' || approveFeesTx.state.status === 'pending'
+                                            ? 'Approving...'
+                                            : 'Collect Fees'}
+                                </motion.button>
                             </div>
 
-                            {approveFeesTx.state.status !== 'idle' && feesStep !== 'send' && (
+                            {approveFeesTx.state.status !== 'idle' && feesStep === 'approve' && (
                                 <TransactionStatus state={approveFeesTx.state} onReset={approveFeesTx.reset} />
                             )}
                             <TransactionStatus state={collectFeesTx.state} onReset={collectFeesTx.reset} />

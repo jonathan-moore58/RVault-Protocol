@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { useWalletConnect } from '@btc-vision/walletconnect';
 import { useVaultContract } from '../../hooks/useVaultContract';
 import { useTransaction } from '../../hooks/useTransaction';
+import { providerService } from '../../services/ProviderService';
+import { getNetworkConfig, DEFAULT_NETWORK } from '../../config/networks';
 import { TransactionStatus } from '../common/TransactionStatus';
 import { parseTokenAmount, formatTokenAmount } from '../../utils/formatting';
 import type { UserInfo } from '../../types/vault';
@@ -13,6 +16,7 @@ interface WithdrawFormProps {
 }
 
 export function WithdrawForm({ userInfo, onSuccess, tokenSymbol = 'TOKEN' }: WithdrawFormProps) {
+    const { provider, network } = useWalletConnect();
     const contracts = useVaultContract();
     const { state, execute, reset } = useTransaction();
     const [shareAmount, setShareAmount] = useState('');
@@ -54,9 +58,16 @@ export function WithdrawForm({ userInfo, onSuccess, tokenSymbol = 'TOKEN' }: Wit
     async function handleWithdraw() {
         if (!contracts || !isValid) return;
 
-        const txId = await execute(async () => {
-            return await contracts.vault.withdraw(parsedShares);
-        });
+        const activeProvider = provider ?? providerService.getProvider(
+            network ?? getNetworkConfig(DEFAULT_NETWORK).network,
+        );
+
+        const txId = await execute(
+            async () => {
+                return await contracts.vault.withdraw(parsedShares);
+            },
+            { waitForConfirmation: activeProvider },
+        );
 
         if (txId) {
             setShareAmount('');
@@ -65,7 +76,7 @@ export function WithdrawForm({ userInfo, onSuccess, tokenSymbol = 'TOKEN' }: Wit
         }
     }
 
-    const isProcessing = state.status === 'simulating' || state.status === 'pending';
+    const isProcessing = state.status === 'simulating' || state.status === 'pending' || state.status === 'confirming';
 
     return (
         <div className="gradient-border relative overflow-hidden rounded-2xl p-8">
@@ -171,7 +182,9 @@ export function WithdrawForm({ userInfo, onSuccess, tokenSymbol = 'TOKEN' }: Wit
                             : 'none',
                     }}
                 >
-                    {isProcessing ? 'Withdrawing...' : 'Withdraw & Claim'}
+                    {state.status === 'confirming'
+                        ? 'Confirming on-chain...'
+                        : isProcessing ? 'Withdrawing...' : 'Withdraw & Claim'}
                 </motion.button>
 
                 <TransactionStatus state={state} onReset={reset} />
