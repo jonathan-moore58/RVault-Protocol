@@ -221,10 +221,10 @@ export function Admin() {
                     </span>
                 </div>
                 <h1 className="mt-3 text-3xl font-bold tracking-tight text-white">
-                    Admin <span className="text-gradient-animated">Panel</span>
+                    Admin
                 </h1>
                 <p className="mt-2 text-[14px] text-gray-500">
-                    Owner controls for vault management
+                    Vault owner actions — pause, fees, cooldown, token config
                 </p>
             </motion.div>
 

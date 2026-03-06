@@ -44,10 +44,10 @@ export function Withdraw() {
         >
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
                 <h1 className="text-3xl font-bold tracking-tight text-white">
-                    Withdraw <span className="text-gradient-animated">Shares</span>
+                    Withdraw
                 </h1>
                 <p className="mt-2 text-[14px] text-gray-500">
-                    Burn shares to withdraw tokens and auto-claim pending revenue
+                    Burns shares, returns tokens + any unclaimed revenue
                 </p>
             </motion.div>
 

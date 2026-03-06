@@ -35,9 +35,9 @@ const features = [
 
 /* ──────────────────── How it Works ──────────────────── */
 const steps = [
-    { num: '1', title: 'Deposit', desc: 'Deposit OP20 tokens to receive proportional vault shares', color: '#00ffaa', icon: 'M12 4v16m8-8H4' },
-    { num: '2', title: 'Earn', desc: 'Protocol fees accumulate and distribute to all shareholders', color: '#00e5ff', icon: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6' },
-    { num: '3', title: 'Claim', desc: 'Claim revenue anytime or auto-compound into more shares', color: '#bf5af2', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
+    { num: '1', title: 'Deposit', desc: 'Lock OP20 tokens → get shares (1:1 on first deposit)', color: '#00ffaa', icon: 'M12 4v16m8-8H4' },
+    { num: '2', title: 'Earn', desc: 'Owner sends fees via collectFees → revenuePerShare grows', color: '#00e5ff', icon: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6' },
+    { num: '3', title: 'Claim', desc: 'Withdraw tokens to your wallet or compound into more shares', color: '#bf5af2', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
 ];
 
 /* ──────────────────── Single Vault Card ──────────────────── */
@@ -214,8 +214,8 @@ export function Vaults() {
                         <span className="ml-3 text-lg font-medium text-gray-500 sm:text-xl">Protocol</span>
                     </h1>
                     <p className="mt-3 max-w-xl text-[15px] leading-relaxed text-gray-500">
-                        Multi-vault revenue sharing on Bitcoin. Deposit tokens into any vault,
-                        earn proportional protocol fees. Built for DeFi on OPNet.
+                        Stake OP20 tokens, collect fees from protocol revenue.
+                        Synthetix-style accumulator math — O(1) distribution, no epochs.
                     </p>
 
                     {/* Protocol stats ribbon */}
@@ -412,8 +412,8 @@ export function Vaults() {
                         </h3>
                     </div>
                     <p className="max-w-md text-sm text-gray-500">
-                        RVault Protocol leverages OPNet smart contracts to bring DeFi revenue sharing
-                        to Bitcoin L1 — no bridges, no wrapping, pure Bitcoin.
+                        Native Bitcoin L1 smart contracts via OPNet.
+                        No bridges, no wrapping — just BTC.
                     </p>
                     <div className="flex items-center gap-4 mt-2">
                         <a
@@ -429,7 +429,7 @@ export function Vaults() {
                             OPNet Docs
                         </a>
                         <a
-                            href="https://github.com/JamalBanique/rv"
+                            href="https://github.com/jonathan-moore58/RVault-Protocol"
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12px] font-semibold text-gray-400 transition-colors hover:text-white"

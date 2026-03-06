@@ -73,10 +73,10 @@ export function Claim() {
 
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
                 <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
-                    Claim <span className="text-gradient-animated">Revenue</span>
+                    Claim
                 </h1>
                 <p className="mt-2 text-[14px] text-gray-500">
-                    Claim your proportional share of protocol fees
+                    Collect accrued revenue or compound it back into shares
                 </p>
             </motion.div>
 
@@ -186,8 +186,8 @@ export function Claim() {
                                     </svg>
                                 </div>
                                 <div>
-                                    <h2 className="text-lg font-bold text-white">Revenue Stats</h2>
-                                    <p className="text-[12px] text-gray-500">Your earnings overview</p>
+                                    <h2 className="text-lg font-bold text-white">Position</h2>
+                                    <p className="text-[12px] text-gray-500">Shares, deposits, and claimed totals</p>
                                 </div>
                             </div>
 

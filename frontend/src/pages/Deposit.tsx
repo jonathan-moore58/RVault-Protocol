@@ -36,10 +36,10 @@ export function Deposit() {
         >
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
                 <h1 className="text-3xl font-bold tracking-tight text-white">
-                    Deposit <span className="text-gradient-animated">Tokens</span>
+                    Deposit
                 </h1>
                 <p className="mt-2 text-[14px] text-gray-500">
-                    Earn your proportional share of vault revenue
+                    Lock tokens → receive vault shares → earn fees
                 </p>
             </motion.div>
 
@@ -85,8 +85,8 @@ export function Deposit() {
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                             </svg>
                         </div>
-                        <h3 className="mt-4 text-lg font-bold text-white">Connect to Deposit</h3>
-                        <p className="mt-1.5 text-sm text-gray-500">Connect your wallet to start earning</p>
+                        <h3 className="mt-4 text-lg font-bold text-white">Wallet Required</h3>
+                        <p className="mt-1.5 text-sm text-gray-500">Connect OP_WALLET or UniSat to deposit</p>
                         <motion.button
                             whileHover={{ scale: 1.02 }}
                             whileTap={{ scale: 0.98 }}

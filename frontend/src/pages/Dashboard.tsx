@@ -119,7 +119,7 @@ export function Dashboard() {
                             <span className="ml-3 text-lg font-medium text-gray-500">{selectedVault.name}</span>
                         </h1>
                         <p className="mt-1 text-[13px] text-gray-500">
-                            Deposit {activeTokenSymbol}, earn proportional vault revenue
+                            {activeTokenSymbol} vault — deposit, earn fees, claim or compound
                         </p>
                     </div>
                 </div>
@@ -346,9 +346,9 @@ export function Dashboard() {
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a2.25 2.25 0 00-2.25-2.25H15a3 3 0 11-6 0H5.25A2.25 2.25 0 003 12m18 0v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 013 9m18 0V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 013 6v3" />
                             </svg>
                         </div>
-                        <h3 className="mt-5 text-lg font-bold text-white">Connect Your Wallet</h3>
+                        <h3 className="mt-5 text-lg font-bold text-white">Wallet Required</h3>
                         <p className="mt-2 text-sm text-gray-500">
-                            View your position and claim revenue from the {selectedVault.symbol} vault
+                            Connect to view your {selectedVault.symbol} position
                         </p>
                         <motion.button
                             whileHover={{ scale: 1.02 }}

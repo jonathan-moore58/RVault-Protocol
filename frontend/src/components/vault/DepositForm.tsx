@@ -115,8 +115,8 @@ export function DepositForm({ onSuccess, tokenBalance = 0n, tokenSymbol = 'TOKEN
                         </svg>
                     </div>
                     <div>
-                        <h2 className="text-lg font-bold text-white">Deposit Tokens</h2>
-                        <p className="text-[12px] text-gray-500">Earn a share of vault revenue</p>
+                        <h2 className="text-lg font-bold text-white">Deposit</h2>
+                        <p className="text-[12px] text-gray-500">Approve → deposit → receive vault shares</p>
                     </div>
                 </div>
 
