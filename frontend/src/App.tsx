@@ -168,8 +168,7 @@ function NavBar() {
                     </div>
                 </div>
 
-                {/* Beam line */}
-                <div className="h-px w-full beam-line" style={{ background: 'rgba(255,255,255,0.03)' }} />
+                <div className="h-px w-full" style={{ background: 'rgba(255,255,255,0.06)' }} />
             </header>
 
             {/* Mobile drawer */}
@@ -250,14 +249,6 @@ function NavBar() {
                                 ))}
                             </nav>
 
-                            <div className="absolute bottom-0 left-0 right-0 p-4">
-                                <div className="h-px w-full" style={{
-                                    background: 'linear-gradient(90deg, transparent, rgba(0,255,170,0.1), transparent)',
-                                }} />
-                                <div className="mt-3 text-center text-[10px] tracking-widest text-gray-700">
-                                    BUILT ON OPNET
-                                </div>
-                            </div>
                         </motion.div>
                     </>
                 )}
@@ -288,27 +279,13 @@ function AnimatedRoutes() {
     );
 }
 
-/* Floating ambient orbs — v2 */
-function AmbientOrbs() {
-    return (
-        <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-            <div className="float-slow absolute top-[15%] left-[10%] h-64 w-64 rounded-full opacity-30"
-                style={{ background: 'radial-gradient(circle, rgba(0,255,170,0.06) 0%, transparent 70%)', filter: 'blur(60px)' }} />
-            <div className="float-slower absolute top-[60%] right-[5%] h-80 w-80 rounded-full opacity-20"
-                style={{ background: 'radial-gradient(circle, rgba(191,90,242,0.06) 0%, transparent 70%)', filter: 'blur(80px)' }} />
-            <div className="float-slow absolute bottom-[10%] left-[40%] h-48 w-48 rounded-full opacity-25"
-                style={{ background: 'radial-gradient(circle, rgba(0,229,255,0.05) 0%, transparent 70%)', filter: 'blur(50px)' }} />
-        </div>
-    );
-}
 
 export default function App() {
     return (
         <BrowserRouter>
             <VaultProvider>
             <ToastProvider>
-            <div className="noise min-h-screen bg-aurora text-gray-100">
-                <AmbientOrbs />
+            <div className="min-h-screen bg-vault-950 text-gray-100">
                 <NavBar />
                 <main className="relative z-10 mx-auto max-w-5xl px-6 py-10">
                     <ErrorBoundary>
@@ -321,11 +298,10 @@ export default function App() {
                             background: 'linear-gradient(90deg, transparent, rgba(0,255,170,0.15), rgba(0,229,255,0.1), transparent)',
                         }} />
                         <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="flex items-center gap-4 text-[11px] tracking-wider text-gray-600">
-                                <span className="font-bold">RVAULT PROTOCOL</span>
-                                <span>
-                                    BUILT ON{' '}<span className="text-gradient-animated font-semibold">OPNET</span>{' '}BITCOIN L1
-                                </span>
+                            <div className="flex items-center gap-3 text-[11px] tracking-wider text-gray-600">
+                                <span className="font-semibold text-gray-500">RVault Protocol</span>
+                                <span className="text-gray-700">·</span>
+                                <span>OPNet · Bitcoin L1</span>
                             </div>
                             <div className="flex items-center gap-4">
                                 <a href="https://github.com/jonathan-moore58/RVault-Protocol" target="_blank" rel="noopener noreferrer"

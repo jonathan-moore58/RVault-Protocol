@@ -79,11 +79,10 @@ export function WithdrawForm({ userInfo, onSuccess, tokenSymbol = 'TOKEN' }: Wit
     const isProcessing = state.status === 'simulating' || state.status === 'pending' || state.status === 'confirming';
 
     return (
-        <div className="gradient-border relative overflow-hidden rounded-2xl p-8">
-            {/* Background orb */}
-            <div className="float-slower absolute -right-24 -top-24 h-48 w-48 rounded-full"
-                style={{ background: 'radial-gradient(circle, rgba(239,68,68,0.04) 0%, transparent 70%)' }} />
-
+        <div className="relative overflow-hidden rounded-2xl p-8" style={{
+            background: 'rgba(255,255,255,0.02)',
+            border: '1px solid rgba(255,255,255,0.06)',
+        }}>
             <div className="relative">
                 {/* Header */}
                 <div className="flex items-center gap-3">

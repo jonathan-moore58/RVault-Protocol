@@ -189,10 +189,9 @@ export function Dashboard() {
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: 0.25 }}
-                            className="gradient-border relative overflow-hidden rounded-2xl p-6"
+                            className="relative overflow-hidden rounded-2xl p-6"
+                            style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}
                         >
-                            <div className="absolute -bottom-16 -left-16 h-40 w-40 rounded-full"
-                                style={{ background: `radial-gradient(circle, ${colors.to}08 0%, transparent 70%)` }} />
 
                             <div className="relative">
                                 <div className="flex items-center gap-2">
@@ -332,13 +331,9 @@ export function Dashboard() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.25 }}
-                    className="gradient-border relative overflow-hidden rounded-2xl px-8 py-14 text-center"
+                    className="relative overflow-hidden rounded-2xl px-8 py-14 text-center"
+                    style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}
                 >
-                    <div className="float-slow absolute left-[20%] top-[20%] h-24 w-24 rounded-full"
-                        style={{ background: `radial-gradient(circle, ${colors.from}08 0%, transparent 70%)` }} />
-                    <div className="float-slower absolute right-[20%] bottom-[20%] h-32 w-32 rounded-full"
-                        style={{ background: 'radial-gradient(circle, rgba(191,90,242,0.04) 0%, transparent 70%)' }} />
-
                     <div className="relative">
                         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl"
                             style={{ background: `linear-gradient(135deg, ${colors.from}12, ${colors.to}08)` }}>

@@ -123,11 +123,10 @@ export function DepositForm({ onSuccess, tokenBalance = 0n, tokenSymbol = 'TOKEN
         depositTx.state.status === 'confirming';
 
     return (
-        <div className="gradient-border relative overflow-hidden rounded-2xl p-8">
-            {/* Background glow */}
-            <div className="float-slow absolute -left-24 -top-24 h-48 w-48 rounded-full"
-                style={{ background: 'radial-gradient(circle, rgba(0,255,170,0.05) 0%, transparent 70%)' }} />
-
+        <div className="relative overflow-hidden rounded-2xl p-8" style={{
+            background: 'rgba(255,255,255,0.02)',
+            border: '1px solid rgba(255,255,255,0.06)',
+        }}>
             <div className="relative">
                 {/* Header */}
                 <div className="flex items-center gap-3">
