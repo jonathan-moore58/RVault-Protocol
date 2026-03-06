@@ -10,6 +10,8 @@ import { Skeleton } from '../components/common/Skeleton';
 import { parseTokenAmount, formatTokenAmount, isValidHexAddress } from '../utils/formatting';
 import { Address } from '@btc-vision/transaction';
 import { useVaultContext } from '../context/VaultContext';
+import { providerService } from '../services/ProviderService';
+import { getNetworkConfig, DEFAULT_NETWORK } from '../config/networks';
 
 const pageVariants = {
     initial: { opacity: 0, y: 20 },
@@ -18,13 +20,14 @@ const pageVariants = {
 };
 
 export function Admin() {
-    const { walletAddress, address: userAddress, openConnectModal } = useWalletConnect();
+    const { walletAddress, address: userAddress, openConnectModal, provider, network } = useWalletConnect();
     const contracts = useVaultContract();
     const { vaultInfo, protocolInfo, activeTokenSymbol, loading, refetch } = useVaultData();
     const { selectedVault } = useVaultContext();
     const hasActiveDeposits = vaultInfo && vaultInfo.totalDeposited > 0n;
     const pauseTx = useTransaction();
     const minDepositTx = useTransaction();
+    const approveFeesTx = useTransaction();
     const collectFeesTx = useTransaction();
     const setTokenTx = useTransaction();
     const setFeeTx = useTransaction();
@@ -36,6 +39,7 @@ export function Admin() {
     const [minDeposit, setMinDeposit] = useState<string>('');
     const [currentMinDeposit, setCurrentMinDeposit] = useState<bigint | null>(null);
     const [feeAmount, setFeeAmount] = useState('');
+    const [feesStep, setFeesStep] = useState<'input' | 'approve' | 'send'>('input');
     const [depositTokenInput, setDepositTokenInput] = useState('');
     const [protocolFeeBps, setProtocolFeeBps] = useState('');
     const [feeRecipientInput, setFeeRecipientInput] = useState('');
@@ -105,6 +109,27 @@ export function Admin() {
         }
     }
 
+    async function handleApproveFees() {
+        if (!contracts) return;
+        const parsed = parseTokenAmount(feeAmount);
+        if (parsed <= 0n) return;
+        setFeesStep('approve');
+
+        const activeProvider = provider ?? providerService.getProvider(
+            network ?? getNetworkConfig(DEFAULT_NETWORK).network,
+        );
+
+        const txId = await approveFeesTx.execute(
+            async () => {
+                const vaultAddr = await contracts.vault.contractAddress;
+                return await contracts.token.increaseAllowance(vaultAddr, parsed);
+            },
+            { waitForConfirmation: activeProvider },
+        );
+
+        if (txId) setFeesStep('send');
+    }
+
     async function handleCollectFees() {
         if (!contracts) return;
         const parsed = parseTokenAmount(feeAmount);
@@ -116,6 +141,8 @@ export function Admin() {
 
         if (txId) {
             setFeeAmount('');
+            setFeesStep('input');
+            approveFeesTx.reset();
             setTimeout(() => void refetch(), 2000);
         }
     }
@@ -589,27 +616,47 @@ export function Admin() {
                                         type="text"
                                         inputMode="decimal"
                                         value={feeAmount}
-                                        onChange={(e) => setFeeAmount(e.target.value)}
+                                        onChange={(e) => { setFeeAmount(e.target.value); setFeesStep('input'); approveFeesTx.reset(); collectFeesTx.reset(); }}
                                         placeholder="0.00"
-                                        className="input-neon w-full rounded-xl px-5 py-4 text-lg font-semibold text-white placeholder-gray-700 outline-none"
+                                        disabled={feesStep !== 'input'}
+                                        className="input-neon w-full rounded-xl px-5 py-4 text-lg font-semibold text-white placeholder-gray-700 outline-none disabled:opacity-40"
                                     />
                                     <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[11px] font-bold uppercase tracking-wider text-gray-600">
                                         {activeTokenSymbol}
                                     </div>
                                 </div>
-                                <motion.button
-                                    whileHover={{ scale: 1.01 }}
-                                    whileTap={{ scale: 0.98 }}
-                                    onClick={handleCollectFees}
-                                    disabled={!parseTokenAmount(feeAmount) || collectFeesTx.state.status === 'simulating' || collectFeesTx.state.status === 'pending'}
-                                    className="btn-neon whitespace-nowrap rounded-xl px-8 py-4 text-sm"
-                                >
-                                    {collectFeesTx.state.status === 'simulating' || collectFeesTx.state.status === 'pending'
-                                        ? 'Sending...'
-                                        : 'Collect Fees'}
-                                </motion.button>
+                                {feesStep === 'send' ? (
+                                    <motion.button
+                                        whileHover={{ scale: 1.01 }}
+                                        whileTap={{ scale: 0.98 }}
+                                        onClick={handleCollectFees}
+                                        disabled={collectFeesTx.state.status === 'simulating' || collectFeesTx.state.status === 'pending'}
+                                        className="btn-neon whitespace-nowrap rounded-xl px-8 py-4 text-sm"
+                                    >
+                                        {collectFeesTx.state.status === 'simulating' || collectFeesTx.state.status === 'pending'
+                                            ? 'Sending...'
+                                            : 'Send Revenue'}
+                                    </motion.button>
+                                ) : (
+                                    <motion.button
+                                        whileHover={{ scale: 1.01 }}
+                                        whileTap={{ scale: 0.98 }}
+                                        onClick={handleApproveFees}
+                                        disabled={!parseTokenAmount(feeAmount) || approveFeesTx.state.status === 'simulating' || approveFeesTx.state.status === 'pending' || approveFeesTx.state.status === 'confirming'}
+                                        className="btn-ghost whitespace-nowrap rounded-xl px-8 py-4 text-sm font-semibold"
+                                    >
+                                        {approveFeesTx.state.status === 'confirming'
+                                            ? 'Confirming...'
+                                            : approveFeesTx.state.status === 'simulating' || approveFeesTx.state.status === 'pending'
+                                              ? 'Approving...'
+                                              : 'Approve'}
+                                    </motion.button>
+                                )}
                             </div>
 
+                            {approveFeesTx.state.status !== 'idle' && feesStep !== 'send' && (
+                                <TransactionStatus state={approveFeesTx.state} onReset={approveFeesTx.reset} />
+                            )}
                             <TransactionStatus state={collectFeesTx.state} onReset={collectFeesTx.reset} />
                         </div>
                     </div>

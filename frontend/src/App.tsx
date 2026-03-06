@@ -1,11 +1,12 @@
 import { useState, Component, type ReactNode, type ErrorInfo } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useWalletConnect } from '@btc-vision/walletconnect';
 import { WalletConnect } from './components/wallet/WalletConnect';
 import { ToastProvider } from './components/common/Toast';
 import { VaultProvider } from './context/VaultContext';
 import { VaultSelector } from './components/vault/VaultSelector';
+import { useVaultContext } from './context/VaultContext';
 import { Vaults } from './pages/Vaults';
 import { Dashboard } from './pages/Dashboard';
 import { Deposit } from './pages/Deposit';
@@ -265,17 +266,23 @@ function NavBar() {
     );
 }
 
+function RequireVault({ children }: { children: ReactNode }) {
+    const { selectedVault } = useVaultContext();
+    if (!selectedVault) return <Navigate to="/" replace />;
+    return <>{children}</>;
+}
+
 function AnimatedRoutes() {
     const location = useLocation();
     return (
         <AnimatePresence mode="wait">
             <Routes location={location} key={location.pathname}>
                 <Route path="/" element={<Vaults />} />
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/deposit" element={<Deposit />} />
-                <Route path="/claim" element={<Claim />} />
-                <Route path="/withdraw" element={<Withdraw />} />
-                <Route path="/admin" element={<Admin />} />
+                <Route path="/dashboard" element={<RequireVault><Dashboard /></RequireVault>} />
+                <Route path="/deposit" element={<RequireVault><Deposit /></RequireVault>} />
+                <Route path="/claim" element={<RequireVault><Claim /></RequireVault>} />
+                <Route path="/withdraw" element={<RequireVault><Withdraw /></RequireVault>} />
+                <Route path="/admin" element={<RequireVault><Admin /></RequireVault>} />
             </Routes>
         </AnimatePresence>
     );

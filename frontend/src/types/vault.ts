@@ -32,13 +32,6 @@ export interface TransactionState {
     estimatedWaitSecs?: number;
 }
 
-export interface ActivityItem {
-    type: 'deposit' | 'withdraw' | 'claim' | 'compound' | 'emergency';
-    amount: string;
-    timestamp: number;
-    txId?: string;
-}
-
 // Typed vault contract interface
 export interface IVaultContract extends BaseContractProperties {
     // Write methods

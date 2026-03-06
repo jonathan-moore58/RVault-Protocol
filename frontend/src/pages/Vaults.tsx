@@ -267,9 +267,18 @@ export function Vaults() {
                 </motion.div>
 
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                    {vaults.map((data, i) => (
-                        <VaultCard key={data.vault.id} data={data} index={i} />
-                    ))}
+                    {vaults.length > 0 ? (
+                        vaults.map((data, i) => (
+                            <VaultCard key={data.vault.id} data={data} index={i} />
+                        ))
+                    ) : (
+                        <div className="col-span-full rounded-2xl px-8 py-14 text-center" style={{
+                            background: 'rgba(255,255,255,0.02)',
+                            border: '1px solid rgba(255,255,255,0.05)',
+                        }}>
+                            <p className="text-sm text-gray-500">No vaults available on this network</p>
+                        </div>
+                    )}
                 </div>
             </div>
 
