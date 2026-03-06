@@ -9,33 +9,33 @@
         "lint": "eslint src/"
     },
     "dependencies": {
-        "react": "latest",
-        "react-dom": "latest",
-        "react-router-dom": "latest",
+        "react": "^19.2.4",
+        "react-dom": "^19.2.4",
+        "react-router-dom": "^7.13.1",
         "opnet": "1.8.1-rc.19",
         "@btc-vision/transaction": "1.8.0-rc.10",
         "@btc-vision/bitcoin": "7.0.0-rc.6",
         "@btc-vision/walletconnect": "1.10.3",
-        "framer-motion": "latest"
+        "framer-motion": "^12.34.5"
     },
     "devDependencies": {
-        "vite": "latest",
-        "@vitejs/plugin-react": "latest",
-        "vite-plugin-node-polyfills": "latest",
-        "vite-plugin-eslint2": "latest",
-        "@tailwindcss/vite": "latest",
-        "tailwindcss": "latest",
-        "typescript": "latest",
-        "crypto-browserify": "latest",
-        "stream-browserify": "latest",
-        "@types/react": "latest",
-        "@types/react-dom": "latest",
-        "@types/node": "latest",
+        "vite": "^7.3.1",
+        "@vitejs/plugin-react": "^5.1.4",
+        "vite-plugin-node-polyfills": "^0.25.0",
+        "vite-plugin-eslint2": "^5.0.5",
+        "@tailwindcss/vite": "^4.2.1",
+        "tailwindcss": "^4.2.1",
+        "typescript": "^5.9.3",
+        "crypto-browserify": "^3.12.1",
+        "stream-browserify": "^3.0.0",
+        "@types/react": "^19.2.14",
+        "@types/react-dom": "^19.2.3",
+        "@types/node": "^25.3.3",
         "eslint": "^9.39.2",
         "@eslint/js": "^9.39.2",
-        "eslint-plugin-react-hooks": "latest",
-        "eslint-plugin-react-refresh": "latest",
-        "typescript-eslint": "latest"
+        "eslint-plugin-react-hooks": "^7.0.1",
+        "eslint-plugin-react-refresh": "^0.5.2",
+        "typescript-eslint": "^8.56.1"
     },
     "overrides": {
         "@noble/hashes": "2.0.1"
