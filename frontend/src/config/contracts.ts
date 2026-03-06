@@ -24,7 +24,7 @@ const NETWORK_VAULTS: Map<string, NetworkVaults> = new Map([
             vaults: [
                 {
                     id: 'moto',
-                    vault: 'opt1sqzftvkfqhht3ejs48aktp9tkqzxuyfc5ksuvahne',
+                    vault: 'opt1sqqm5zdlhswk3u7qt395hl4d0wg70xvvxyv2k4j3w',
                     depositToken: '0xfd4473840751d58d9f8b73bdd57d6c5260453d5518bd7cd02d0a4cf3df9bf4dd',
                     symbol: 'MOTO',
                     name: 'Motoswap Vault',
@@ -32,7 +32,7 @@ const NETWORK_VAULTS: Map<string, NetworkVaults> = new Map([
                 },
                 {
                     id: 'pill',
-                    vault: 'opt1sqrcffc6qdh26hua55manzk9zt6tj9j7umqtc3pyp',
+                    vault: 'opt1sqzz42z8jgrdg75v8dve6q8qpmj48eg7hechqp7r6',
                     depositToken: '0xb09fc29c112af8293539477e23d8df1d3126639642767d707277131352040cbb',
                     symbol: 'PILL',
                     name: 'Pill Vault',
@@ -40,7 +40,7 @@ const NETWORK_VAULTS: Map<string, NetworkVaults> = new Map([
                 },
                 {
                     id: 'rvt',
-                    vault: 'opt1sqqs8u62m8s2jgf7gcyqznzy4en8ym8wdzvzul4gm',
+                    vault: 'opt1sqzgjj9wkfj632manzew4kz49nrrfzkqpvsyztsz3',
                     depositToken: '0xfbee8fcb9e0b9acafcebccb0a704554037c3feee4c6081bef378d1a8dd8aece5',
                     symbol: 'RVT',
                     name: 'RVault Token Vault',

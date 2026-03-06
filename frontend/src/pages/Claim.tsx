@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useWalletConnect } from '@btc-vision/walletconnect';
+import type { Address } from '@btc-vision/transaction';
 import { useVaultData } from '../hooks/useVaultData';
 import { useVaultContract } from '../hooks/useVaultContract';
+import { useVaultContext } from '../context/VaultContext';
 import { useTransaction } from '../hooks/useTransaction';
 import { providerService } from '../services/ProviderService';
 import { getNetworkConfig, DEFAULT_NETWORK } from '../config/networks';
@@ -12,6 +14,7 @@ import { AnimatedNumber } from '../components/common/AnimatedNumber';
 import { Confetti } from '../components/common/Confetti';
 import { Skeleton } from '../components/common/Skeleton';
 import { formatTokenAmount } from '../utils/formatting';
+import type { VaultEntry } from '../config/contracts';
 
 const pageVariants = {
     initial: { opacity: 0, y: 20 },
@@ -19,12 +22,32 @@ const pageVariants = {
     exit: { opacity: 0, y: -12 },
 };
 
+/* Resolve a reward token Address to a known symbol from the vault registry */
+function resolveTokenSymbol(tokenAddress: Address | undefined, vaults: readonly VaultEntry[]): string {
+    if (!tokenAddress) return 'TOKEN';
+    const addrStr = String(tokenAddress).toLowerCase();
+    if (!addrStr || addrStr === '0x' || addrStr.replace(/0x/i, '').replace(/0/g, '') === '') return 'TOKEN';
+    for (const v of vaults) {
+        if (v.depositToken.toLowerCase() === addrStr) return v.symbol;
+    }
+    return `${addrStr.slice(0, 8)}...`;
+}
+
+/* Theme colors per reward token symbol */
+const REWARD_COLORS: Record<string, string> = {
+    MOTO: '#00ffaa',
+    PILL: '#ff6b6b',
+    RVT: '#bf5af2',
+};
+
 export function Claim() {
     const { walletAddress, openConnectModal, provider, network } = useWalletConnect();
-    const { vaultInfo, userInfo, protocolInfo, loading, refetch } = useVaultData();
+    const { vaultInfo, userInfo, protocolInfo, rewardInfo, userRewardInfo, loading, refetch } = useVaultData();
     const contracts = useVaultContract();
+    const { availableVaults } = useVaultContext();
     const claimTx = useTransaction();
     const compoundTx = useTransaction();
+    const claimRewardsTx = useTransaction();
     const [showConfetti, setShowConfetti] = useState(false);
 
     const pending = userInfo?.pendingRevenue ?? 0n;
@@ -72,9 +95,39 @@ export function Claim() {
         }
     }
 
+    async function handleClaimRewards() {
+        if (!contracts) return;
+
+        const activeProvider = provider ?? providerService.getProvider(
+            network ?? getNetworkConfig(DEFAULT_NETWORK).network,
+        );
+
+        const txId = await claimRewardsTx.execute(
+            async () => {
+                return await contracts.vault.claimAllRewards();
+            },
+            { waitForConfirmation: activeProvider },
+        );
+
+        if (txId) {
+            setShowConfetti(true);
+            setTimeout(() => setShowConfetti(false), 4000);
+            setTimeout(() => void refetch(), 2000);
+        }
+    }
+
+    // Derive external reward state
+    const hasExternalRewards = rewardInfo && rewardInfo.count > 0n;
+    const reward0Symbol = hasExternalRewards ? resolveTokenSymbol(rewardInfo.token0, availableVaults) : '';
+    const reward1Symbol = hasExternalRewards && rewardInfo.count > 1n ? resolveTokenSymbol(rewardInfo.token1, availableVaults) : '';
+    const pending0 = userRewardInfo?.pending0 ?? 0n;
+    const pending1 = userRewardInfo?.pending1 ?? 0n;
+    const hasAnyPendingReward = pending0 > 0n || pending1 > 0n;
+
     const isProcessing =
         claimTx.state.status === 'simulating' || claimTx.state.status === 'pending' || claimTx.state.status === 'confirming' ||
-        compoundTx.state.status === 'simulating' || compoundTx.state.status === 'pending' || compoundTx.state.status === 'confirming';
+        compoundTx.state.status === 'simulating' || compoundTx.state.status === 'pending' || compoundTx.state.status === 'confirming' ||
+        claimRewardsTx.state.status === 'simulating' || claimRewardsTx.state.status === 'pending' || claimRewardsTx.state.status === 'confirming';
 
     return (
         <motion.div
@@ -99,6 +152,7 @@ export function Claim() {
             <VaultStats vaultInfo={vaultInfo} protocolInfo={protocolInfo} loading={loading} />
 
             {walletAddress ? (
+                <>
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -266,6 +320,121 @@ export function Claim() {
                         </div>
                     </div>
                 </motion.div>
+
+                {/* External Rewards card — shows when vault has registered reward tokens */}
+                {hasExternalRewards && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.35 }}
+                        className="gradient-border relative overflow-hidden rounded-2xl p-8"
+                    >
+                        <div className="absolute -left-16 -top-16 h-48 w-48 rounded-full"
+                            style={{ background: 'radial-gradient(circle, rgba(191,90,242,0.06) 0%, transparent 70%)' }} />
+
+                        <div className="relative">
+                            <div className="flex items-center gap-3">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: 'rgba(191,90,242,0.08)' }}>
+                                    <svg className="h-5 w-5" style={{ color: 'rgba(191,90,242,0.7)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-bold text-white">External Rewards</h2>
+                                    <p className="text-[12px] text-gray-500">
+                                        Multi-token rewards from protocol revenue
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Reward token rows */}
+                            <div className="mt-6 space-y-3">
+                                {/* Reward token 0 */}
+                                {rewardInfo.count >= 1n && (
+                                    <div className="flex items-center justify-between rounded-xl px-4 py-3" style={{
+                                        background: `${REWARD_COLORS[reward0Symbol] ?? '#888'}06`,
+                                        border: `1px solid ${REWARD_COLORS[reward0Symbol] ?? '#888'}15`,
+                                    }}>
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="h-2 w-2 rounded-full" style={{ background: REWARD_COLORS[reward0Symbol] ?? '#888' }} />
+                                            <span className="text-[13px] font-semibold" style={{ color: REWARD_COLORS[reward0Symbol] ?? '#ccc' }}>
+                                                {reward0Symbol}
+                                            </span>
+                                        </div>
+                                        {loading ? (
+                                            <Skeleton className="h-6 w-20" />
+                                        ) : (
+                                            <div className="flex items-center gap-2">
+                                                <AnimatedNumber
+                                                    value={formatTokenAmount(pending0)}
+                                                    className="text-[17px] font-bold text-white"
+                                                />
+                                                <span className="text-[11px] text-gray-600">pending</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Reward token 1 */}
+                                {rewardInfo.count >= 2n && (
+                                    <div className="flex items-center justify-between rounded-xl px-4 py-3" style={{
+                                        background: `${REWARD_COLORS[reward1Symbol] ?? '#888'}06`,
+                                        border: `1px solid ${REWARD_COLORS[reward1Symbol] ?? '#888'}15`,
+                                    }}>
+                                        <div className="flex items-center gap-2.5">
+                                            <div className="h-2 w-2 rounded-full" style={{ background: REWARD_COLORS[reward1Symbol] ?? '#888' }} />
+                                            <span className="text-[13px] font-semibold" style={{ color: REWARD_COLORS[reward1Symbol] ?? '#ccc' }}>
+                                                {reward1Symbol}
+                                            </span>
+                                        </div>
+                                        {loading ? (
+                                            <Skeleton className="h-6 w-20" />
+                                        ) : (
+                                            <div className="flex items-center gap-2">
+                                                <AnimatedNumber
+                                                    value={formatTokenAmount(pending1)}
+                                                    className="text-[17px] font-bold text-white"
+                                                />
+                                                <span className="text-[11px] text-gray-600">pending</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Claim All button */}
+                            <motion.button
+                                whileHover={{ scale: 1.01 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={handleClaimRewards}
+                                disabled={!hasAnyPendingReward || isProcessing}
+                                className="mt-6 w-full rounded-xl py-4 text-sm font-bold transition-all disabled:opacity-40"
+                                style={{
+                                    background: 'linear-gradient(135deg, rgba(191,90,242,0.12), rgba(0,255,170,0.06))',
+                                    border: '1px solid rgba(191,90,242,0.15)',
+                                    color: hasAnyPendingReward ? '#bf5af2' : '#666',
+                                }}
+                            >
+                                {claimRewardsTx.state.status === 'simulating' || claimRewardsTx.state.status === 'pending'
+                                    ? 'Claiming...'
+                                    : claimRewardsTx.state.status === 'confirming'
+                                      ? 'Confirming...'
+                                      : hasAnyPendingReward
+                                        ? 'Claim All Rewards'
+                                        : 'No Pending Rewards'}
+                            </motion.button>
+
+                            <p className="mt-2 text-center text-[10px] text-gray-600">
+                                Claims all external reward tokens in a single transaction
+                            </p>
+
+                            {claimRewardsTx.state.status !== 'idle' && (
+                                <TransactionStatus state={claimRewardsTx.state} onReset={claimRewardsTx.reset} />
+                            )}
+                        </div>
+                    </motion.div>
+                )}
+                </>
             ) : (
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useWalletConnect } from '@btc-vision/walletconnect';
+import { getContract, OP_20_ABI, type IOP20Contract } from 'opnet';
 import { useVaultContract } from '../hooks/useVaultContract';
 import { useVaultData } from '../hooks/useVaultData';
 import { useTransaction } from '../hooks/useTransaction';
@@ -33,6 +34,9 @@ export function Admin() {
     const setFeeTx = useTransaction();
     const setRecipientTx = useTransaction();
     const setCooldownTx = useTransaction();
+    const addRewardTx = useTransaction();
+    const approveDistTx = useTransaction();
+    const distributeTx = useTransaction();
 
     const [isPaused, setIsPaused] = useState<boolean | null>(null);
     const [owner, setOwner] = useState<Address | null>(null);
@@ -44,6 +48,10 @@ export function Admin() {
     const [protocolFeeBps, setProtocolFeeBps] = useState('');
     const [feeRecipientInput, setFeeRecipientInput] = useState('');
     const [cooldownBlocksInput, setCooldownBlocksInput] = useState('');
+    const [rewardTokenInput, setRewardTokenInput] = useState('');
+    const [distTokenInput, setDistTokenInput] = useState('');
+    const [distAmountInput, setDistAmountInput] = useState('');
+    const [distStep, setDistStep] = useState<'input' | 'approve' | 'send'>('input');
     const [adminLoading, setAdminLoading] = useState(true);
 
     const isOwner = !!(walletAddress && owner && userAddress && owner.equals(userAddress));
@@ -234,6 +242,84 @@ export function Admin() {
 
         if (txId) {
             setCooldownBlocksInput('');
+            setTimeout(() => void refetch(), 2000);
+        }
+    }
+
+    async function handleAddRewardToken() {
+        if (!contracts || !isValidHexAddress(rewardTokenInput)) return;
+
+        const txId = await addRewardTx.execute(
+            async () => {
+                return await contracts.vault.addRewardToken(Address.fromString(rewardTokenInput.trim()));
+            },
+            { waitForConfirmation: getActiveProvider() },
+        );
+
+        if (txId) {
+            setRewardTokenInput('');
+            setTimeout(() => void refetch(), 2000);
+        }
+    }
+
+    /**
+     * Distribute reward: approve the vault to pull tokens, then call distributeReward.
+     * Same back-to-back pattern as collectFees — MotoSwap style.
+     */
+    async function handleDistributeReward() {
+        if (!contracts || !userAddress || !isValidHexAddress(distTokenInput)) return;
+        const parsed = parseTokenAmount(distAmountInput);
+        if (parsed <= 0n) return;
+
+        const vaultAddr = await contracts.vault.contractAddress;
+
+        // Create a temporary token contract for the reward token
+        const fallbackNetwork = network ?? getNetworkConfig(DEFAULT_NETWORK).network;
+        const activeProvider = provider ?? providerService.getProvider(fallbackNetwork);
+        const rewardToken = getContract<IOP20Contract>(
+            distTokenInput.trim(),
+            OP_20_ABI,
+            activeProvider,
+            fallbackNetwork,
+            userAddress,
+        );
+
+        // Check allowance
+        let needsApproval = true;
+        try {
+            const allowanceResult = await rewardToken.allowance(userAddress, vaultAddr);
+            if (!allowanceResult.revert) {
+                const current = (allowanceResult.properties.remaining as bigint) ?? 0n;
+                needsApproval = current < parsed;
+            }
+        } catch { /* approve to be safe */ }
+
+        if (needsApproval) {
+            setDistStep('approve');
+            const approveTxId = await approveDistTx.execute(async () => {
+                return await rewardToken.increaseAllowance(vaultAddr, parsed);
+            });
+            if (!approveTxId) return;
+        }
+
+        setDistStep('send');
+        const txId = await distributeTx.execute(
+            async () => {
+                return await contracts.vault.distributeReward(
+                    Address.fromString(distTokenInput.trim()),
+                    parsed,
+                );
+            },
+            {
+                waitForConfirmation: getActiveProvider(),
+                ignoreRevert: needsApproval,
+            },
+        );
+
+        if (txId) {
+            setDistAmountInput('');
+            setDistStep('input');
+            approveDistTx.reset();
             setTimeout(() => void refetch(), 2000);
         }
     }
@@ -683,6 +769,131 @@ export function Admin() {
                                 <TransactionStatus state={approveFeesTx.state} onReset={approveFeesTx.reset} />
                             )}
                             <TransactionStatus state={collectFeesTx.state} onReset={collectFeesTx.reset} />
+                        </div>
+                    </div>
+
+                    {/* ─── External Reward Management ─── */}
+                    <div className="mt-2 rounded-xl px-4 py-2.5" style={{
+                        background: 'rgba(191,90,242,0.03)',
+                        border: '1px solid rgba(191,90,242,0.08)',
+                    }}>
+                        <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'rgba(191,90,242,0.6)' }}>
+                            External Reward System
+                        </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                        {/* Add Reward Token */}
+                        <div className="gradient-border relative overflow-hidden rounded-2xl p-6">
+                            <div className="relative">
+                                <div className="flex items-center gap-3">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: 'rgba(191,90,242,0.08)' }}>
+                                        <svg className="h-5 w-5" style={{ color: 'rgba(191,90,242,0.7)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <h3 className="text-base font-bold text-white">Add Reward Token</h3>
+                                        <p className="text-[12px] text-gray-500">Register an external reward token (max 2)</p>
+                                    </div>
+                                </div>
+
+                                <div className="mt-6">
+                                    <input
+                                        type="text"
+                                        value={rewardTokenInput}
+                                        onChange={(e) => setRewardTokenInput(e.target.value)}
+                                        placeholder="Token address (0x...)"
+                                        className="input-neon w-full rounded-xl px-4 py-3.5 text-sm font-medium text-white placeholder-gray-700 outline-none font-mono"
+                                    />
+                                    {rewardTokenInput.trim() && !isValidHexAddress(rewardTokenInput) && (
+                                        <p className="mt-1.5 text-[11px] text-red-400">Must be 0x-prefixed, 64 hex chars</p>
+                                    )}
+                                </div>
+
+                                <motion.button
+                                    whileHover={{ scale: 1.005 }}
+                                    whileTap={{ scale: 0.995 }}
+                                    onClick={handleAddRewardToken}
+                                    disabled={!isValidHexAddress(rewardTokenInput) || addRewardTx.state.status === 'simulating' || addRewardTx.state.status === 'pending'}
+                                    className="btn-ghost mt-4 w-full rounded-xl py-3.5 text-sm font-semibold"
+                                >
+                                    {addRewardTx.state.status === 'simulating' || addRewardTx.state.status === 'pending'
+                                        ? 'Adding...'
+                                        : 'Add Reward Token'}
+                                </motion.button>
+
+                                <TransactionStatus state={addRewardTx.state} onReset={addRewardTx.reset} />
+                            </div>
+                        </div>
+
+                        {/* Distribute Reward */}
+                        <div className="gradient-border relative overflow-hidden rounded-2xl p-6">
+                            <div className="relative">
+                                <div className="flex items-center gap-3">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: 'rgba(0,255,170,0.08)' }}>
+                                        <svg className="h-5 w-5 text-[#00ffaa]/70" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <h3 className="text-base font-bold text-white">Distribute Reward</h3>
+                                        <p className="text-[12px] text-gray-500">Send reward tokens for distribution to stakers</p>
+                                    </div>
+                                </div>
+
+                                <div className="mt-6 space-y-3">
+                                    <input
+                                        type="text"
+                                        value={distTokenInput}
+                                        onChange={(e) => { setDistTokenInput(e.target.value); setDistStep('input'); approveDistTx.reset(); distributeTx.reset(); }}
+                                        placeholder="Reward token address (0x...)"
+                                        disabled={distStep !== 'input'}
+                                        className="input-neon w-full rounded-xl px-4 py-3.5 text-sm font-medium text-white placeholder-gray-700 outline-none font-mono disabled:opacity-40"
+                                    />
+                                    {distTokenInput.trim() && !isValidHexAddress(distTokenInput) && (
+                                        <p className="text-[11px] text-red-400">Must be 0x-prefixed, 64 hex chars</p>
+                                    )}
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={distAmountInput}
+                                            onChange={(e) => { setDistAmountInput(e.target.value); setDistStep('input'); approveDistTx.reset(); distributeTx.reset(); }}
+                                            placeholder="Amount to distribute"
+                                            disabled={distStep !== 'input'}
+                                            className="input-neon w-full rounded-xl px-4 py-3.5 text-sm font-medium text-white placeholder-gray-700 outline-none disabled:opacity-40"
+                                        />
+                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[11px] font-bold uppercase tracking-wider text-gray-600">
+                                            TOKENS
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <motion.button
+                                    whileHover={{ scale: 1.005 }}
+                                    whileTap={{ scale: 0.995 }}
+                                    onClick={handleDistributeReward}
+                                    disabled={!isValidHexAddress(distTokenInput) || !parseTokenAmount(distAmountInput) ||
+                                        approveDistTx.state.status === 'simulating' || approveDistTx.state.status === 'pending' ||
+                                        distributeTx.state.status === 'simulating' || distributeTx.state.status === 'pending' ||
+                                        distributeTx.state.status === 'confirming'}
+                                    className="btn-ghost mt-4 w-full rounded-xl py-3.5 text-sm font-semibold"
+                                >
+                                    {distributeTx.state.status === 'confirming'
+                                        ? 'Confirming...'
+                                        : distributeTx.state.status === 'simulating' || distributeTx.state.status === 'pending'
+                                          ? 'Distributing...'
+                                          : approveDistTx.state.status === 'simulating' || approveDistTx.state.status === 'pending'
+                                            ? 'Approving...'
+                                            : 'Distribute Reward'}
+                                </motion.button>
+
+                                {approveDistTx.state.status !== 'idle' && distStep === 'approve' && (
+                                    <TransactionStatus state={approveDistTx.state} onReset={approveDistTx.reset} />
+                                )}
+                                <TransactionStatus state={distributeTx.state} onReset={distributeTx.reset} />
+                            </div>
                         </div>
                     </div>
                 </motion.div>

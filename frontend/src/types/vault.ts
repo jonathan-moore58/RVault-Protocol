@@ -22,6 +22,19 @@ export interface ProtocolInfo extends ContractDecodedObjectResult {
     cooldownBlocks: bigint;
 }
 
+export interface RewardInfo extends ContractDecodedObjectResult {
+    count: bigint;
+    token0: Address;
+    totalDistributed0: bigint;
+    token1: Address;
+    totalDistributed1: bigint;
+}
+
+export interface UserRewardInfo extends ContractDecodedObjectResult {
+    pending0: bigint;
+    pending1: bigint;
+}
+
 export interface TransactionState {
     status: 'idle' | 'simulating' | 'pending' | 'confirming' | 'success' | 'error';
     txId?: string;
@@ -61,4 +74,11 @@ export interface IVaultContract extends BaseContractProperties {
     getMinimumDeposit(): Promise<CallResult<{ minimumDeposit: bigint }>>;
     getDepositToken(): Promise<CallResult<{ depositToken: Address }>>;
     getProtocolInfo(): Promise<CallResult<ProtocolInfo>>;
+
+    // External reward methods
+    addRewardToken(token: Address): Promise<CallResult<{ success: boolean }>>;
+    distributeReward(token: Address, amount: bigint): Promise<CallResult<{ success: boolean }>>;
+    claimAllRewards(): Promise<CallResult<{ reward0: bigint; reward1: bigint }>>;
+    getRewardInfo(): Promise<CallResult<RewardInfo>>;
+    getUserRewardInfo(user: Address): Promise<CallResult<UserRewardInfo>>;
 }

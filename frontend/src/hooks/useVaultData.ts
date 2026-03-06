@@ -3,7 +3,7 @@ import { useWalletConnect } from '@btc-vision/walletconnect';
 import type { Address } from '@btc-vision/transaction';
 import { useVaultContract } from './useVaultContract';
 import { useVaultContext } from '../context/VaultContext';
-import type { VaultInfo, UserInfo, ProtocolInfo } from '../types/vault';
+import type { VaultInfo, UserInfo, ProtocolInfo, RewardInfo, UserRewardInfo } from '../types/vault';
 
 const POLL_INTERVAL = 15_000;
 
@@ -15,6 +15,8 @@ export function useVaultData() {
     const [vaultInfo, setVaultInfo] = useState<VaultInfo | null>(null);
     const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
     const [protocolInfo, setProtocolInfo] = useState<ProtocolInfo | null>(null);
+    const [rewardInfo, setRewardInfo] = useState<RewardInfo | null>(null);
+    const [userRewardInfo, setUserRewardInfo] = useState<UserRewardInfo | null>(null);
     const [tokenBalance, setTokenBalance] = useState<bigint>(0n);
     const [loading, setLoading] = useState(true);
     const [tokenMismatch, setTokenMismatch] = useState(false);
@@ -84,6 +86,24 @@ export function useVaultData() {
                 // Protocol info may not be available on older contracts
             }
 
+            // Fetch external reward info
+            try {
+                const rewardResult = await contracts.vault.getRewardInfo();
+                if (!rewardResult.revert) {
+                    const ri = rewardResult.properties;
+                    setRewardInfo({
+                        count: (ri.count as bigint) ?? 0n,
+                        token0: ri.token0 as Address,
+                        totalDistributed0: (ri.totalDistributed0 as bigint) ?? 0n,
+                        token1: ri.token1 as Address,
+                        totalDistributed1: (ri.totalDistributed1 as bigint) ?? 0n,
+                    });
+                }
+            } catch {
+                // getRewardInfo may not be available on older contracts
+                setRewardInfo(null);
+            }
+
             if (walletAddress && userAddress) {
                 const userResult = await contracts.vault.getUserInfo(userAddress);
 
@@ -106,8 +126,23 @@ export function useVaultData() {
                 } catch {
                     setTokenBalance(0n);
                 }
+
+                // Fetch user external reward info
+                try {
+                    const urResult = await contracts.vault.getUserRewardInfo(userAddress);
+                    if (!urResult.revert) {
+                        const ur = urResult.properties;
+                        setUserRewardInfo({
+                            pending0: (ur.pending0 as bigint) ?? 0n,
+                            pending1: (ur.pending1 as bigint) ?? 0n,
+                        });
+                    }
+                } catch {
+                    setUserRewardInfo(null);
+                }
             } else {
                 setUserInfo(null);
+                setUserRewardInfo(null);
                 setTokenBalance(0n);
             }
         } catch (err) {
@@ -122,6 +157,8 @@ export function useVaultData() {
         setVaultInfo(null);
         setUserInfo(null);
         setProtocolInfo(null);
+        setRewardInfo(null);
+        setUserRewardInfo(null);
         setTokenBalance(0n);
         setLoading(true);
     }, [selectedVault?.id]);
@@ -133,8 +170,8 @@ export function useVaultData() {
     }, [fetchData]);
 
     return {
-        vaultInfo, userInfo, protocolInfo, tokenBalance,
-        activeTokenSymbol, tokenMismatch,
+        vaultInfo, userInfo, protocolInfo, rewardInfo, userRewardInfo,
+        tokenBalance, activeTokenSymbol, tokenMismatch,
         loading, refetch: fetchData,
     };
 }
