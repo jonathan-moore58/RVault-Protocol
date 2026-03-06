@@ -22,7 +22,7 @@ const NETWORK_VAULTS: Map<string, NetworkVaults> = new Map([
     [
         'testnet',
         {
-            feeRouter: '', // Set after deploying FeeRouter WASM
+            feeRouter: 'opt1sqzuqq4uu6qgsd9e6caqh4ncsta2v44342cy4hjwl',
             vaults: [
                 {
                     id: 'moto',
